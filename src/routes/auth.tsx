@@ -12,12 +12,12 @@ import logo from "@/assets/logo.png.asset.json";
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: "Sign in — WayPoint" },
+      { title: "Sign in — Wandor" },
       {
         name: "description",
-        content: "Sign in or create a free WayPoint account to save your AI-generated travel guides.",
+        content: "Sign in or create a free Wandor account to save your AI-generated travel guides.",
       },
-      { property: "og:title", content: "Sign in — WayPoint" },
+      { property: "og:title", content: "Sign in — Wandor" },
       { property: "og:description", content: "Save and revisit your AI-planned trips." },
     ],
   }),
@@ -88,8 +88,8 @@ function AuthPage() {
     <div className="grain-hero flex min-h-screen items-center justify-center px-4 py-12">
       <div className="w-full max-w-md">
         <Link to="/" className="mb-6 flex items-center justify-center gap-2">
-          <img src={logo.url} alt="WayPoint logo" className="h-10 w-10 object-contain" />
-          <span className="text-display text-xl font-semibold">WayPoint</span>
+          <img src={logo.url} alt="Wandor logo" className="h-9 w-9 object-contain" />
+          <span className="font-logo text-2xl">wandor</span>
         </Link>
 
         <div className="surface-card animate-rise p-7">
@@ -157,7 +157,7 @@ function AuthPage() {
           </Button>
 
           <p className="mt-6 text-center text-sm text-muted-foreground">
-            {mode === "signup" ? "Already have an account?" : "New to WayPoint?"}{" "}
+            {mode === "signup" ? "Already have an account?" : "New to Wandor?"}{" "}
             <button
               type="button"
               className="font-medium text-primary underline-offset-4 hover:underline"

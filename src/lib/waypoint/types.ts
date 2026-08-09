@@ -202,7 +202,8 @@ export type TripResult = {
   input: TripInput;
   brief: PreferenceBrief;
   plan: TripPlan;
-  check: TripCheck;
+  /** null while the Trip Critic audit is still running. */
+  check: TripCheck | null;
   generatedAt: string;
 };
 

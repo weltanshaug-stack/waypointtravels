@@ -139,6 +139,56 @@ export async function runPlanner(args: {
   return normalisePlan(plan, input);
 }
 
+/* ------- Fast path: brief + plan in a single gateway round-trip ------- */
+
+const BRIEF_SHAPE = `{"constraints":[string],"priorities":[{"label":string,"weight":number,"note":string}],"budgetStrategy":string,"accessibilityConstraints":[string],"paceGuidance":string,"risks":[string]}`;
+
+/**
+ * Combines the Preference Analyzer and Planner passes into one call. The model
+ * still reasons in stages (it emits the constraint brief first, then plans
+ * against it), but the traveller waits for one round-trip instead of two.
+ */
+export async function runBriefAndPlan(input: TripInput): Promise<{
+  brief: PreferenceBrief;
+  plan: TripPlan;
+}> {
+  const days = tripDayCount(input);
+  const system = `${PLANNER_SYSTEM}
+
+Before planning you also act as the PREFERENCE ANALYZER: convert the raw traveller input into an explicit constraint brief (4-6 weighted priorities, testable constraints, budget strategy, accessibility constraints, pace guidance, risks), then plan against that brief.
+Output BOTH results in a single JSON object shaped exactly as:
+{"brief":${BRIEF_SHAPE},"plan":${PLAN_SHAPE}}
+Keep every description to at most 2 short sentences and whyItFits to one sentence. Be concise: no filler prose.`;
+
+  const prompt = [
+    `Traveller input:\n${travellerSummary(input)}`,
+    `Build exactly ${days} day objects, numbered 1..${days}.`,
+    input.destinationFlexible
+      ? `The traveller is flexible on destination. Choose ONE concrete destination inside their preferred area (${input.preferredRegion || "anywhere"}) and justify it in destinationRationale.`
+      : `Keep the destination as stated and use destinationRationale to explain how the plan is shaped around this traveller.`,
+    `Currency for all amounts: ${input.currency}.`,
+  ].join("\n\n");
+
+  const raw = await runAgentStep<{ brief?: PreferenceBrief; plan?: TripPlan }>({
+    system,
+    prompt,
+    label: "itinerary planner",
+  });
+
+  const brief = raw.brief ?? ({} as PreferenceBrief);
+  return {
+    brief: {
+      constraints: brief.constraints ?? [],
+      priorities: (brief.priorities ?? []).slice(0, 8),
+      budgetStrategy: brief.budgetStrategy ?? "",
+      accessibilityConstraints: brief.accessibilityConstraints ?? [],
+      paceGuidance: brief.paceGuidance ?? "",
+      risks: brief.risks ?? [],
+    },
+    plan: normalisePlan(raw.plan ?? ({} as TripPlan), input),
+  };
+}
+
 /* ---------------- 7. Trip Critic Agent ---------------- */
 
 export async function runTripCritic(args: {

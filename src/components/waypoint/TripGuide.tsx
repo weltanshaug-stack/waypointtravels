@@ -2,17 +2,15 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
-  AlertTriangle,
-  Bus,
+  Accessibility,
   Check,
   Clock,
   Coffee,
   Flame,
   Footprints,
   ImageIcon,
-  Info,
+  Loader2,
   MapPin,
-  Sparkles,
   TriangleAlert,
   Wallet,
 } from "lucide-react";
@@ -30,22 +28,10 @@ import {
 
 const TIME_LABEL = { morning: "Morning", afternoon: "Afternoon", evening: "Evening" } as const;
 
-const LEVEL_STYLE: Record<ActivityLevel, { className: string; icon: typeof Coffee; hint: string }> = {
-  Relaxed: {
-    className: "border-primary/30 bg-primary/10 text-foreground",
-    icon: Coffee,
-    hint: "Relaxed day — light walking, plenty of downtime",
-  },
-  Moderate: {
-    className: "border-border bg-secondary text-foreground",
-    icon: Footprints,
-    hint: "Moderate day — normal sightseeing pace",
-  },
-  Active: {
-    className: "border-warn/50 bg-warn/15 text-foreground",
-    icon: Flame,
-    hint: "Active day — lots of walking or physical activity",
-  },
+const LEVEL_STYLE: Record<ActivityLevel, { className: string; icon: typeof Coffee }> = {
+  Relaxed: { className: "border-border bg-accent text-accent-foreground", icon: Coffee },
+  Moderate: { className: "border-border bg-secondary text-foreground", icon: Footprints },
+  Active: { className: "border-warn/50 bg-warn/15 text-warn-foreground", icon: Flame },
 };
 
 function imageKeyFor(item: ItineraryItem, destination: string): string {
@@ -53,25 +39,16 @@ function imageKeyFor(item: ItineraryItem, destination: string): string {
   return (q || `${item.title} ${destination}`).slice(0, 120);
 }
 
-function EstimateNote({ children }: { children?: React.ReactNode }) {
-  return (
-    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-      <Info className="h-3 w-3" />
-      {children ?? "Estimated — verify before booking."}
-    </span>
-  );
-}
+const hours = (minutes: number) => `${Math.round((minutes / 60) * 10) / 10}h`;
 
-function ScoreRing({ score }: { score: number }) {
-  const tone = score >= 85 ? "text-primary" : score >= 70 ? "text-warn" : "text-destructive";
+function Fact({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-baseline gap-1">
-      <span className={`text-display text-4xl font-semibold ${tone}`}>{score}</span>
-      <span className="text-sm text-muted-foreground">/100</span>
+    <div>
+      <dt className="text-xs tracking-wide text-muted-foreground uppercase">{label}</dt>
+      <dd className="mt-0.5 text-base font-semibold">{value}</dd>
     </div>
   );
 }
-
 
 export function TripGuide({
   result,
@@ -79,15 +56,22 @@ export function TripGuide({
   onChangeDestination,
   adapting,
   headerActions,
+  checking,
 }: {
   result: TripResult;
   onAdapt?: (id: AdaptationId) => void;
   onChangeDestination?: () => void;
   adapting?: AdaptationId | null;
   headerActions?: React.ReactNode;
+  /** True while the Trip Critic audit is still running in the background. */
+  checking?: boolean;
 }) {
   const { plan, check, input, brief } = result;
   const currency = plan.currency || input.currency;
+
+  // Only surface accessibility content when the traveller actually asked for it.
+  const showAccessibility =
+    input.accessibilityNeeds.length > 0 || Boolean(input.accessibilityNotes?.trim());
 
   const imageQueries = useMemo(
     () =>
@@ -106,175 +90,126 @@ export function TripGuide({
   });
 
   const budgetRows = [
-    { label: "Accommodation", value: plan.budget.accommodation },
+    { label: "Stay", value: plan.budget.accommodation },
     { label: "Food", value: plan.budget.food },
-    { label: "Transportation", value: plan.budget.transportation },
+    { label: "Transport", value: plan.budget.transportation },
     { label: "Activities", value: plan.budget.activities },
-    { label: "Miscellaneous", value: plan.budget.miscellaneous },
-  ];
+    { label: "Other", value: plan.budget.miscellaneous },
+  ].filter((r) => r.value > 0);
   const maxRow = Math.max(1, ...budgetRows.map((r) => r.value));
+
   const dates =
     !input.useDayCount && input.startDate && input.endDate
       ? `${input.startDate} → ${input.endDate}`
-      : `${plan.days.length} days · dates flexible`;
+      : `${plan.days.length} days · flexible`;
+
+  const problems = check?.checks.filter((c) => c.status !== "pass") ?? [];
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <section className="surface-card animate-rise grain-hero overflow-hidden">
-        <div className="px-6 py-7 sm:px-8">
+    <div className="space-y-8">
+      {/* ---------- Header ---------- */}
+      <section className="surface-card animate-rise overflow-hidden">
+        <div className="grain-hero px-6 py-7 sm:px-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
-              <Badge className="mb-3 gap-1">
-                <Sparkles className="h-3 w-3" /> AI-generated guide
-              </Badge>
-              <h1 className="text-display text-3xl font-semibold sm:text-4xl">{plan.destination}</h1>
+              <p className="text-xs font-semibold tracking-widest text-accent-foreground uppercase">
+                Your itinerary
+              </p>
+              <h1 className="text-display mt-1 text-3xl font-semibold sm:text-4xl">
+                {plan.destination}
+              </h1>
               <p className="mt-1 text-muted-foreground">{plan.title}</p>
             </div>
             {headerActions}
           </div>
 
-          <dl className="mt-6 grid gap-4 sm:grid-cols-4">
-            {[
-              { k: "Dates", v: dates },
-              { k: "Days", v: `${plan.days.length}` },
-              {
-                k: "Travellers",
-                v: `${input.adults} adult${input.adults === 1 ? "" : "s"}${input.children ? `, ${input.children} child${input.children === 1 ? "" : "ren"}` : ""}`,
-              },
-              { k: "Estimated total", v: formatMoney(plan.budget.total, currency) },
-            ].map((row) => (
-              <div key={row.k} className="rounded-xl border border-border/70 bg-card/70 px-4 py-3">
-                <dt className="text-xs tracking-widest text-muted-foreground uppercase">{row.k}</dt>
-                <dd className="mt-1 font-semibold">{row.v}</dd>
-              </div>
-            ))}
+          <dl className="mt-6 grid grid-cols-2 gap-5 sm:grid-cols-4">
+            <Fact label="Dates" value={dates} />
+            <Fact label="Days" value={`${plan.days.length}`} />
+            <Fact
+              label="Travellers"
+              value={`${input.adults + input.children}`}
+            />
+            <Fact label="Est. total" value={formatMoney(plan.budget.total, currency)} />
           </dl>
         </div>
       </section>
 
-      {/* Overview + why */}
-      <section className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+      {/* ---------- Money + fit ---------- */}
+      <section className="grid gap-6 lg:grid-cols-2">
         <div className="surface-card p-6">
-          <h2 className="text-display text-xl font-semibold">Trip overview</h2>
-          <p className="mt-3 leading-relaxed text-foreground/90">{plan.overview}</p>
-          {plan.destinationRationale && (
-            <p className="mt-3 rounded-xl bg-accent/50 p-4 text-sm leading-relaxed">
-              <strong>Why here: </strong>
-              {plan.destinationRationale}
-            </p>
-          )}
-          {plan.highlights.length > 0 && (
-            <div className="mt-5 space-y-3">
-              <h3 className="text-sm font-semibold tracking-widest text-muted-foreground uppercase">
-                Why this was chosen
-              </h3>
-              {plan.highlights.map((h) => (
-                <div key={h.title} className="rounded-xl border border-border bg-secondary/40 p-3">
-                  <p className="font-medium">{h.title}</p>
-                  <p className="text-sm text-muted-foreground">{h.reason}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Budget */}
-        <div className="surface-card p-6">
-          <div className="flex items-center gap-2">
-            <Wallet className="h-4 w-4 text-primary" />
-            <h2 className="text-display text-xl font-semibold">Budget breakdown</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-display flex items-center gap-2 text-lg font-semibold">
+              <Wallet className="h-4 w-4" aria-hidden="true" /> Budget
+            </h2>
+            <span className="text-sm text-muted-foreground">
+              of {formatMoney(input.budgetTotal, input.currency)} planned
+            </span>
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            All figures are AI estimates for the whole group — verify before booking.
-          </p>
-          <div className="mt-5 space-y-3">
+          <ul className="mt-4 space-y-2.5">
             {budgetRows.map((row) => (
-              <div key={row.label}>
+              <li key={row.label}>
                 <div className="flex items-center justify-between text-sm">
                   <span>{row.label}</span>
                   <span className="font-medium">{formatMoney(row.value, currency)}</span>
                 </div>
-                <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted">
+                <div className="mt-1 h-2 overflow-hidden rounded-full bg-muted">
                   <div
-                    className="h-full rounded-full bg-primary transition-all"
+                    className="h-full rounded-full bg-accent-foreground"
                     style={{ width: `${(row.value / maxRow) * 100}%` }}
                   />
                 </div>
-              </div>
+              </li>
             ))}
-          </div>
-          <div className="mt-5 flex items-center justify-between border-t border-border pt-4">
-            <span className="font-semibold">Estimated total</span>
-            <span className="text-display text-xl font-semibold">
-              {formatMoney(plan.budget.total, currency)}
-            </span>
-          </div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Your stated budget: {formatMoney(input.budgetTotal, input.currency)} ({input.budgetCategory})
+          </ul>
+          <p className="mt-4 border-t border-border pt-3 text-sm text-muted-foreground">
+            Estimates for the whole group — check prices before booking.
           </p>
-          {plan.budget.notes && <p className="mt-3 text-sm text-muted-foreground">{plan.budget.notes}</p>}
         </div>
-      </section>
 
-      {/* Trip check */}
-      <section className="surface-card p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h2 className="text-display text-xl font-semibold">AI Trip Check</h2>
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{check.summary}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs tracking-widest text-muted-foreground uppercase">Trip fit</p>
-            <ScoreRing score={check.fitScore} />
-          </div>
-        </div>
-        <ul className="mt-5 grid gap-2 sm:grid-cols-2">
-          {check.checks.map((c) => (
-            <li key={c.name} className="flex items-start gap-3 rounded-xl border border-border bg-card p-3">
-              <span
-                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
-                  c.status === "pass"
-                    ? "bg-primary text-primary-foreground"
-                    : c.status === "warn"
-                      ? "bg-warn text-warn-foreground"
-                      : "bg-destructive text-destructive-foreground"
-                }`}
-              >
-                {c.status === "pass" ? <Check className="h-3 w-3" /> : <TriangleAlert className="h-3 w-3" />}
-              </span>
-              <div>
-                <p className="text-sm font-medium">{c.name}</p>
-                <p className="text-sm text-muted-foreground">{c.detail}</p>
+        <div className="surface-card p-6">
+          <h2 className="text-display text-lg font-semibold">Trip check</h2>
+          {checking && !check && (
+            <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              Reviewing your plan for conflicts…
+            </p>
+          )}
+          {check && (
+            <>
+              <div className="mt-3 flex items-baseline gap-2">
+                <span className="text-display text-4xl font-semibold">{check.fitScore}</span>
+                <span className="text-sm text-muted-foreground">/ 100 fit</span>
               </div>
-            </li>
-          ))}
-        </ul>
-        {check.issues.length > 0 && (
-          <div className="mt-5 space-y-2">
-            <h3 className="text-sm font-semibold tracking-widest text-muted-foreground uppercase">
-              Proposed corrections
-            </h3>
-            {check.issues.map((issue, i) => (
-              <div key={i} className="flex items-start gap-3 rounded-xl border border-warn/50 bg-warn/10 p-3">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warn-foreground" />
-                <p className="text-sm">
-                  {issue.day ? <strong>Day {issue.day}: </strong> : null}
-                  {issue.issue} <span className="text-muted-foreground">→ {issue.proposedFix}</span>
+              <p className="mt-2 text-sm text-muted-foreground">{check.summary}</p>
+              {problems.length === 0 ? (
+                <p className="mt-4 flex items-center gap-2 text-sm font-medium">
+                  <Check className="h-4 w-4" aria-hidden="true" /> No conflicts found.
                 </p>
-              </div>
-            ))}
-          </div>
-        )}
+              ) : (
+                <ul className="mt-4 space-y-2">
+                  {problems.map((c) => (
+                    <li key={c.name} className="flex items-start gap-2 text-sm">
+                      <TriangleAlert
+                        className="mt-0.5 h-4 w-4 shrink-0 text-warn-foreground"
+                        aria-hidden="true"
+                      />
+                      <span>
+                        <strong>{c.name}:</strong> {c.detail}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </div>
       </section>
 
-      {/* Adaptation */}
+      {/* ---------- Adapt ---------- */}
       {onAdapt && (
         <section className="surface-card p-6">
-          <h2 className="text-display text-xl font-semibold">Adapt this trip</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            The agents revise the existing itinerary instead of starting over — your priorities stay intact.
-          </p>
+          <h2 className="text-display text-lg font-semibold">Change something</h2>
           <div className="mt-4 flex flex-wrap gap-2">
             {ADAPTATIONS.map((a) => (
               <Button
@@ -289,138 +224,129 @@ export function TripGuide({
             ))}
             {onChangeDestination && (
               <Button variant="ghost" size="sm" disabled={!!adapting} onClick={onChangeDestination}>
-                Change my destination
+                Change destination
               </Button>
             )}
           </div>
         </section>
       )}
 
-      {/* Day-by-day schedule */}
-      <section className="space-y-5">
-        <div>
-          <h2 className="text-display text-2xl font-semibold">Day-by-day schedule</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Every day shows what you're doing, what it costs, how long it takes, and how demanding the day
-            is. All costs are for the whole group and are AI estimates.
-          </p>
-        </div>
+      {/* ---------- Day by day ---------- */}
+      <section aria-labelledby="schedule-heading" className="space-y-10">
+        <h2 id="schedule-heading" className="text-display text-2xl font-semibold">
+          Day by day
+        </h2>
 
         {plan.days.map((day) => {
           const level = LEVEL_STYLE[day.activityLevel ?? "Moderate"];
           const LevelIcon = level.icon;
-          const dayTotal =
-            day.estimatedDayCost || day.items.reduce((sum, i) => sum + i.estimatedCost, 0);
+          const dayTotal = day.estimatedDayCost || day.items.reduce((s, i) => s + i.estimatedCost, 0);
           const dayMinutes = day.items.reduce(
-            (sum, i) => sum + i.durationMinutes + (i.travelTimeMinutes ?? 0),
+            (s, i) => s + i.durationMinutes + (i.travelTimeMinutes ?? 0),
             0,
           );
 
           return (
-            <article key={day.day} className="surface-card overflow-hidden">
-              <header className="border-b border-border bg-secondary/40 px-6 py-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold tracking-widest text-primary uppercase">
-                      Day {day.day}
-                      {day.date ? ` · ${day.date}` : ""}
-                    </p>
-                    <h3 className="text-display mt-0.5 text-xl font-semibold">{day.theme}</h3>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${level.className}`}
-                      title={level.hint}
-                    >
-                      <LevelIcon className="h-3.5 w-3.5" />
-                      {day.activityLevel ?? "Moderate"} day
-                    </span>
-                    <Badge variant="secondary" className="gap-1">
-                      <Wallet className="h-3 w-3" />
-                      Day budget {formatMoney(dayTotal, currency)}
-                    </Badge>
-                    <Badge variant="outline" className="gap-1">
-                      <Clock className="h-3 w-3" />
-                      ~{Math.round((dayMinutes / 60) * 10) / 10}h planned
-                    </Badge>
-                  </div>
+            <article key={day.day} className="scroll-mt-20">
+              {/* Clear day divider */}
+              <div className="flex items-end gap-4 border-b-2 border-foreground/80 pb-3">
+                <span className="text-display text-5xl leading-none font-semibold sm:text-6xl">
+                  {day.day}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">
+                    Day {day.day}
+                    {day.date ? ` · ${day.date}` : ""}
+                  </p>
+                  <h3 className="text-display truncate text-xl font-semibold sm:text-2xl">
+                    {day.theme}
+                  </h3>
                 </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {level.hint} · {day.items.length} activit{day.items.length === 1 ? "y" : "ies"}
-                </p>
-              </header>
+              </div>
 
-              <ol className="divide-y divide-border">
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium ${level.className}`}
+                >
+                  <LevelIcon className="h-4 w-4" aria-hidden="true" />
+                  {day.activityLevel ?? "Moderate"} day
+                </span>
+                <Badge variant="secondary" className="gap-1 text-sm">
+                  <Wallet className="h-3.5 w-3.5" aria-hidden="true" />
+                  {formatMoney(dayTotal, currency)}
+                </Badge>
+                <Badge variant="outline" className="gap-1 text-sm">
+                  <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+                  {hours(dayMinutes)}
+                </Badge>
+                <Badge variant="outline" className="text-sm">
+                  {day.items.length} stop{day.items.length === 1 ? "" : "s"}
+                </Badge>
+              </div>
+
+              <ol className="mt-5 space-y-4">
                 {day.items.map((item, i) => {
-                  const key = imageKeyFor(item, plan.destination);
-                  const image = images?.[key];
+                  const image = images?.[imageKeyFor(item, plan.destination)];
                   return (
-                    <li key={i} className="px-6 py-5">
-                      <div className="grid gap-4 sm:grid-cols-[168px_1fr]">
-                        <div>
-                          <p className="mb-2 text-xs font-semibold tracking-widest text-primary uppercase">
-                            {TIME_LABEL[item.timeOfDay]}
-                          </p>
-                          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl border border-border bg-secondary">
-                            {image ? (
-                              <img
-                                src={image}
-                                alt={`${item.title} in ${plan.destination}`}
-                                loading="lazy"
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-muted-foreground">
-                                <ImageIcon className="h-5 w-5" />
-                                <span className="px-2 text-center text-[10px] leading-tight">
-                                  No photo available
-                                </span>
-                              </div>
-                            )}
-                          </div>
+                    <li key={i} className="surface-card overflow-hidden">
+                      <div className="grid gap-0 sm:grid-cols-[180px_1fr]">
+                        <div className="relative aspect-[16/9] w-full bg-secondary sm:aspect-auto sm:h-full">
+                          {image ? (
+                            <img
+                              src={image}
+                              alt={`${item.title}, ${plan.destination}`}
+                              loading="lazy"
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div
+                              className="flex h-full min-h-[120px] w-full items-center justify-center text-muted-foreground"
+                              aria-hidden="true"
+                            >
+                              <ImageIcon className="h-6 w-6" />
+                            </div>
+                          )}
                         </div>
 
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-start justify-between gap-2">
-                            <h4 className="text-base font-semibold">{item.title}</h4>
-                            <span className="rounded-full bg-secondary px-3 py-1 text-sm font-medium">
+                        <div className="min-w-0 p-5">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold tracking-wide uppercase">
+                              {TIME_LABEL[item.timeOfDay]}
+                            </span>
+                            <span className="text-sm font-medium">
                               {item.estimatedCost > 0
-                                ? `Est. ${formatMoney(item.estimatedCost, currency)}`
+                                ? formatMoney(item.estimatedCost, currency)
                                 : "Free"}
                             </span>
+                            <span className="text-sm text-muted-foreground">
+                              · {hours(item.durationMinutes)}
+                            </span>
                           </div>
-                          <p className="mt-1.5 text-sm leading-relaxed text-foreground/90">
+
+                          <h4 className="mt-2 text-lg font-semibold">{item.title}</h4>
+                          <p className="mt-1 text-[0.975rem] leading-relaxed text-foreground/90">
                             {item.description}
                           </p>
-                          <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                            <span className="inline-flex items-center gap-1">
-                              <Clock className="h-3 w-3" /> ~
-                              {Math.round((item.durationMinutes / 60) * 10) / 10}h
-                            </span>
-                            {item.transportNote ? (
-                              <span className="inline-flex items-center gap-1">
-                                <Bus className="h-3 w-3" /> {item.transportNote}
-                                {item.travelTimeMinutes ? ` (~${item.travelTimeMinutes} min)` : ""}
-                              </span>
-                            ) : null}
-                            {item.imageQuery ? (
-                              <span className="inline-flex items-center gap-1">
-                                <MapPin className="h-3 w-3" /> {item.imageQuery}
-                              </span>
-                            ) : null}
-                            <EstimateNote />
-                          </div>
+
+                          {item.transportNote && (
+                            <p className="mt-2 flex items-start gap-1.5 text-sm text-muted-foreground">
+                              <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                              {item.transportNote}
+                              {item.travelTimeMinutes ? ` (~${item.travelTimeMinutes} min)` : ""}
+                            </p>
+                          )}
+
                           {item.whyItFits && (
-                            <p className="mt-3 rounded-lg bg-accent/50 px-3 py-2 text-sm">
-                              <strong>Why this fits you: </strong>
+                            <p className="mt-3 rounded-lg bg-accent px-3 py-2 text-sm text-accent-foreground">
+                              <strong>Why you'll like it: </strong>
                               {item.whyItFits}
                             </p>
                           )}
-                          {item.accessibilityNote && (
-                            <p className="mt-2 rounded-lg border border-border bg-secondary/50 px-3 py-2 text-sm text-muted-foreground">
-                              <strong>Accessibility: </strong>
-                              {item.accessibilityNote} — reported/estimated, confirm directly with the
-                              venue.
+
+                          {showAccessibility && item.accessibilityNote && (
+                            <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground">
+                              <Accessibility className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                              <span>{item.accessibilityNote} — confirm with the venue.</span>
                             </p>
                           )}
                         </div>
@@ -430,54 +356,55 @@ export function TripGuide({
                 })}
               </ol>
 
-              <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-secondary/30 px-6 py-3 text-sm text-muted-foreground">
-                <span>{[day.notes, day.restPeriods].filter(Boolean).join(" • ")}</span>
-                <span className="font-medium text-foreground">
-                  Day {day.day} total · {formatMoney(dayTotal, currency)}
-                </span>
-              </footer>
+              {(day.notes || day.restPeriods) && (
+                <p className="mt-3 text-sm text-muted-foreground">
+                  {[day.notes, day.restPeriods].filter(Boolean).join(" · ")}
+                </p>
+              )}
             </article>
           );
         })}
       </section>
 
+      {/* ---------- Optional detail, collapsed by default ---------- */}
+      <section className="space-y-3">
+        {plan.highlights.length > 0 && (
+          <details className="surface-card px-6 py-4">
+            <summary className="cursor-pointer font-semibold">Why this trip was built this way</summary>
+            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{plan.overview}</p>
+            <ul className="mt-3 space-y-2 text-sm">
+              {plan.highlights.slice(0, 4).map((h) => (
+                <li key={h.title}>
+                  <strong>{h.title}</strong> — <span className="text-muted-foreground">{h.reason}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
 
-      {/* Reasoning + notes */}
-      <section className="grid gap-6 lg:grid-cols-2">
-        <div className="surface-card p-6">
-          <h2 className="text-display text-xl font-semibold">What the agents understood</h2>
-          <ul className="mt-4 space-y-2 text-sm">
-            {brief.priorities.map((p) => (
-              <li key={p.label} className="flex items-start justify-between gap-3">
-                <span>
-                  <strong>{p.label}</strong>
-                  <span className="text-muted-foreground"> — {p.note}</span>
-                </span>
-                <span className="shrink-0 text-muted-foreground">{Math.round(p.weight * 100)}%</span>
-              </li>
-            ))}
-          </ul>
-          {brief.constraints.length > 0 && (
-            <p className="mt-4 text-sm text-muted-foreground">
-              <strong className="text-foreground">Constraints applied: </strong>
-              {brief.constraints.join(" · ")}
-            </p>
-          )}
-        </div>
-        <div className="surface-card p-6">
-          <h2 className="text-display text-xl font-semibold">Before you book</h2>
-          <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-foreground/90">
-            {plan.practicalNotes.map((n, i) => (
-              <li key={i}>{n}</li>
-            ))}
-          </ul>
-          <p className="mt-4 rounded-xl border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
-            No live travel APIs are connected in this build. Prices, durations, opening hours, transport times
-            and accessibility details are <strong>AI estimates</strong> — verify before booking. Accessibility
-            information is reported/estimated only; confirm directly with each venue. Nothing here is medical
-            advice.
-          </p>
-        </div>
+        {plan.practicalNotes.length > 0 && (
+          <details className="surface-card px-6 py-4">
+            <summary className="cursor-pointer font-semibold">Good to know</summary>
+            <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
+              {plan.practicalNotes.slice(0, 8).map((n, i) => (
+                <li key={i}>{n}</li>
+              ))}
+            </ul>
+          </details>
+        )}
+
+        {brief.priorities.length > 0 && (
+          <details className="surface-card px-6 py-4">
+            <summary className="cursor-pointer font-semibold">What we planned around</summary>
+            <ul className="mt-3 flex flex-wrap gap-2">
+              {brief.priorities.slice(0, 6).map((p) => (
+                <li key={p.label}>
+                  <Badge variant="secondary">{p.label}</Badge>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
       </section>
     </div>
   );

@@ -55,8 +55,13 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  --font-display: "Sora", ui-sans-serif, system-ui, sans-serif;
-  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-logo: "Special Elite", ui-serif, Georgia, serif;
+  --color-wandor-dark: #0a0a0a;
+  --color-wandor-text: #1a1a1a;
+  --color-wandor-muted: #767676;
+  --color-wandor-prompt: #905831;
   --shadow-card: 0 1px 2px oklch(0.28 0.05 160 / 6%), 0 12px 32px -18px oklch(0.28 0.05 160 / 22%);
   --shadow-lift: 0 24px 60px -28px oklch(0.28 0.05 160 / 34%);
   --animate-rise: rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -85,43 +90,43 @@
 
 :root {
   --radius: 1rem;
-  --background: oklch(0.981 0.014 96);
-  --foreground: oklch(0.24 0.03 160);
-  --card: oklch(0.995 0.006 96);
-  --card-foreground: oklch(0.24 0.03 160);
-  --popover: oklch(0.995 0.006 96);
-  --popover-foreground: oklch(0.24 0.03 160);
-  --primary: oklch(0.63 0.14 158);
-  --primary-foreground: oklch(0.99 0.01 150);
-  --primary-soft: oklch(0.94 0.05 158);
-  --secondary: oklch(0.95 0.02 96);
-  --secondary-foreground: oklch(0.3 0.03 160);
-  --muted: oklch(0.955 0.017 96);
-  --muted-foreground: oklch(0.5 0.02 155);
-  --accent: oklch(0.93 0.045 158);
-  --accent-foreground: oklch(0.3 0.06 158);
-  --sand: oklch(0.93 0.035 84);
-  --ink: oklch(0.24 0.03 160);
-  --destructive: oklch(0.58 0.19 25);
-  --destructive-foreground: oklch(0.99 0.01 96);
-  --warn: oklch(0.79 0.13 78);
-  --warn-foreground: oklch(0.3 0.06 60);
-  --border: oklch(0.9 0.018 120);
-  --input: oklch(0.9 0.018 120);
-  --ring: oklch(0.63 0.14 158);
-  --chart-1: oklch(0.63 0.14 158);
-  --chart-2: oklch(0.75 0.11 84);
-  --chart-3: oklch(0.6 0.11 235);
-  --chart-4: oklch(0.7 0.13 30);
-  --chart-5: oklch(0.55 0.09 300);
-  --sidebar: oklch(0.97 0.017 96);
-  --sidebar-foreground: oklch(0.24 0.03 160);
-  --sidebar-primary: oklch(0.63 0.14 158);
-  --sidebar-primary-foreground: oklch(0.99 0.01 150);
-  --sidebar-accent: oklch(0.93 0.045 158);
-  --sidebar-accent-foreground: oklch(0.3 0.06 158);
-  --sidebar-border: oklch(0.9 0.018 120);
-  --sidebar-ring: oklch(0.63 0.14 158);
+  --background: #ffffff;
+  --foreground: #1a1a1a;
+  --card: #ffffff;
+  --card-foreground: #1a1a1a;
+  --popover: #ffffff;
+  --popover-foreground: #1a1a1a;
+  --primary: #0a0a0a;
+  --primary-foreground: #fafafa;
+  --primary-soft: #f0e9e2;
+  --secondary: #f5f4f2;
+  --secondary-foreground: #1a1a1a;
+  --muted: #f5f4f2;
+  --muted-foreground: #767676;
+  --accent: #f3ebe3;
+  --accent-foreground: #905831;
+  --sand: #f0e9e2;
+  --ink: #1a1a1a;
+  --destructive: #b3261e;
+  --destructive-foreground: #ffffff;
+  --warn: #c98a3a;
+  --warn-foreground: #4a2f10;
+  --border: #e6e4e0;
+  --input: #e0ded9;
+  --ring: #905831;
+  --chart-1: #905831;
+  --chart-2: #b08968;
+  --chart-3: #5c7a89;
+  --chart-4: #8a9a5b;
+  --chart-5: #7d6b8a;
+  --sidebar: #fafafa;
+  --sidebar-foreground: #1a1a1a;
+  --sidebar-primary: #0a0a0a;
+  --sidebar-primary-foreground: #fafafa;
+  --sidebar-accent: #f3ebe3;
+  --sidebar-accent-foreground: #905831;
+  --sidebar-border: #e6e4e0;
+  --sidebar-ring: #905831;
 }
 
 .dark {
@@ -194,8 +199,21 @@
 
 @utility grain-hero {
   background-image:
-    radial-gradient(120% 90% at 12% 0%, oklch(0.94 0.05 158 / 90%) 0%, transparent 60%),
-    radial-gradient(90% 80% at 100% 10%, oklch(0.95 0.045 84 / 80%) 0%, transparent 55%);
+    radial-gradient(120% 90% at 12% 0%, rgb(243 235 227 / 90%) 0%, transparent 60%),
+    radial-gradient(90% 80% at 100% 10%, rgb(240 233 226 / 80%) 0%, transparent 55%);
+}
+
+@utility font-logo {
+  font-family: var(--font-logo);
+  letter-spacing: 0.01em;
+}
+
+@utility glass-card {
+  background-color: rgb(255 255 255 / 0.06);
+  border: 3px solid #ffffff;
+  border-radius: 44px;
+  box-shadow: 0 0 4px 0 rgb(0 0 0 / 0.15);
+  backdrop-filter: blur(20px);
 }
 
 @utility skeleton-shimmer {

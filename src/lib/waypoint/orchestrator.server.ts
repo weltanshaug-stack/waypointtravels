@@ -1,7 +1,6 @@
 import {
-  runPreferenceAnalyzer,
+  runBriefAndPlan,
   runPlanner,
-  runReviser,
   runTripCritic,
 } from "@/lib/waypoint/agents.server";
 import type {
@@ -13,32 +12,34 @@ import type {
 } from "@/lib/waypoint/types";
 
 /**
- * Orchestrator agent. Owns the multi-agent control flow and the revision loop:
+ * Orchestrator agent. Owns the multi-agent control flow.
  *
- *   input -> Preference Analyzer -> Planner -> Trip Critic
- *         -> Reviser (only when the critic reports a blocking failure)
- *         -> re-audit -> final guide
+ * Fast path (what the traveller waits for):
+ *   input -> Preference Analyzer + Planner (single round-trip) -> guide
+ * Audit path (runs after the guide is on screen):
+ *   plan -> Trip Critic -> optional Reviser via the adaptation controls
  */
 
 export type OrchestratorResult = {
   brief: PreferenceBrief;
   plan: TripPlan;
-  check: TripCheck;
+  check: TripCheck | null;
   revised: boolean;
 };
 
 export async function orchestrateNewTrip(input: TripInput): Promise<OrchestratorResult> {
-  const brief = await runPreferenceAnalyzer(input);
-  const plan = await runPlanner({ input, brief });
-  const check = await runTripCritic({ input, brief, plan });
-
-  const blocking = check.checks.some((c) => c.status === "fail");
-  if (!blocking) return { brief, plan, check, revised: false };
-
-  const revisedPlan = await runReviser({ input, brief, plan, check });
-  const recheck = await runTripCritic({ input, brief, plan: revisedPlan });
-  return { brief, plan: revisedPlan, check: recheck, revised: true };
+  const { brief, plan } = await runBriefAndPlan(input);
+  return { brief, plan, check: null, revised: false };
 }
+
+export async function orchestrateCheck(args: {
+  input: TripInput;
+  brief: PreferenceBrief;
+  plan: TripPlan;
+}): Promise<TripCheck> {
+  return runTripCritic(args);
+}
+
 
 const DIRECTIVES: Record<AdaptationId, string> = {
   cheaper:
@@ -72,6 +73,5 @@ export async function orchestrateAdaptation(args: {
     revisionDirective: directive,
     ...(args.adaptation === "regenerate" ? {} : { previousPlan: args.plan }),
   });
-  const check = await runTripCritic({ input: args.input, brief: args.brief, plan });
-  return { brief: args.brief, plan, check, revised: true };
+  return { brief: args.brief, plan, check: null, revised: true };
 }

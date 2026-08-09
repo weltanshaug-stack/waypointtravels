@@ -2,11 +2,9 @@ import { useEffect, useState } from "react";
 import { Check, Loader2 } from "lucide-react";
 
 const STAGES = [
-  { title: "Understand", detail: "Analyzing your preferences...", agent: "Preference Analyzer" },
-  { title: "Plan", detail: "Building destinations and activities around your constraints...", agent: "Destination & Activity Planner" },
-  { title: "Optimize", detail: "Balancing budget, travel time, accessibility, and interests...", agent: "Budget · Accessibility · Schedule agents" },
-  { title: "Check", detail: "Checking your itinerary for conflicts and unrealistic scheduling...", agent: "Trip Critic" },
-  { title: "Finalize", detail: "Creating your personalized travel guide...", agent: "Final Itinerary Generator" },
+  { title: "Understanding you", detail: "Turning your answers into planning rules.", agent: "Preference analyzer" },
+  { title: "Building your days", detail: "Choosing places, costs and travel times.", agent: "Planner" },
+  { title: "Writing your guide", detail: "Laying out the day-by-day schedule.", agent: "Guide builder" },
 ];
 
 /**
@@ -23,7 +21,7 @@ export function AgentProgress({ done, label }: { done: boolean; label?: string }
     }
     const timer = setInterval(() => {
       setStage((s) => (s < STAGES.length - 1 ? s + 1 : s));
-    }, 7000);
+    }, 4000);
     return () => clearInterval(timer);
   }, [done]);
 
@@ -35,7 +33,7 @@ export function AgentProgress({ done, label }: { done: boolean; label?: string }
           {label ?? "Designing your trip"}
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          The orchestrator is coordinating seven specialist agents. This usually takes under a minute.
+          This usually takes about 30 seconds. Your plan appears first — the review follows right after.
         </p>
       </div>
       <ol className="divide-y divide-border">

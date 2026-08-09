@@ -11,9 +11,9 @@ import { getTrip } from "@/lib/waypoint/trip.functions";
 export const Route = createFileRoute("/_authenticated/trips/$tripId")({
   head: () => ({
     meta: [
-      { title: "Saved trip — WayPoint" },
-      { name: "description", content: "A saved WayPoint AI travel guide with itinerary, budget and trip check." },
-      { property: "og:title", content: "Saved trip — WayPoint" },
+      { title: "Saved trip — Wandor" },
+      { name: "description", content: "A saved Wandor AI travel guide with itinerary, budget and trip check." },
+      { property: "og:title", content: "Saved trip — Wandor" },
       { property: "og:description", content: "Day-by-day itinerary, budget breakdown and AI trip check." },
     ],
   }),

@@ -13,9 +13,9 @@ import { formatMoney } from "@/lib/waypoint/types";
 export const Route = createFileRoute("/_authenticated/trips/")({
   head: () => ({
     meta: [
-      { title: "My trips — WayPoint" },
-      { name: "description", content: "Your saved AI-generated WayPoint travel guides." },
-      { property: "og:title", content: "My trips — WayPoint" },
+      { title: "My trips — Wandor" },
+      { name: "description", content: "Your saved AI-generated Wandor travel guides." },
+      { property: "og:title", content: "My trips — Wandor" },
       { property: "og:description", content: "Revisit, review and manage your saved travel plans." },
     ],
   }),
