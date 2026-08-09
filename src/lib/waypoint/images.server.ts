@@ -144,17 +144,34 @@ function isDisqualified(c: Candidate): boolean {
   return false;
 }
 
-/** Simple relevance rank: word overlap, then resolution, then landscape framing. */
-function rank(c: Candidate, words: string[]): number {
+/**
+ * Relevance rank. Subject words (the activity/venue itself) matter far more than
+ * the city name, so a generic city photo can never outrank an actual match.
+ */
+function rank(c: Candidate, words: string[], cityWords: string[] = []): number {
   const hay = haystackOf(c);
-  const matched = words.filter((w) => hay.includes(w)).length;
-  const relevance = words.length ? (matched / words.length) * 70 : 35;
+  const subject = words.filter((w) => !cityWords.includes(w));
+  const subjectHits = subject.filter((w) => hay.includes(w)).length;
+  const cityHit = cityWords.some((w) => hay.includes(w)) ? 1 : 0;
+  const subjectScore = subject.length ? (subjectHits / subject.length) * 65 : 30;
+  const locationScore = cityHit * 15;
   const w = c.width ?? 0;
   const h = c.height ?? 0;
-  const quality = w >= 1600 ? 20 : w >= 1000 ? 14 : 8;
-  const framing = w && h ? (w > h ? 10 : 4) : 6;
-  return Math.round(relevance + quality + framing);
+  const quality = w >= 1600 ? 12 : w >= 1000 ? 8 : 4;
+  const framing = w && h ? (w > h ? 8 : 3) : 5;
+  return Math.round(subjectScore + locationScore + quality + framing);
 }
+
+/** True when the candidate actually depicts the subject of the query. */
+function matchesSubject(c: Candidate, words: string[], cityWords: string[]): boolean {
+  const subject = words.filter((w) => !cityWords.includes(w));
+  if (!subject.length) return true;
+  const hay = haystackOf(c);
+  const hits = subject.filter((w) => hay.includes(w)).length;
+  // Need a real overlap with the event itself, not just the city name.
+  return hits >= Math.min(2, subject.length) || hits / subject.length >= 0.5;
+}
+
 
 /** One Openverse request. */
 async function searchOpenverse(query: string): Promise<Candidate[]> {
@@ -256,9 +273,10 @@ export async function fetchImagesForQueries(
     destination ? searchWikipedia(`${destination} landmark`) : Promise.resolve([]),
   ]);
 
+  const cityWords = tokens(destination);
   const destPool = destinationPhotos
     .filter((c) => !isDisqualified(c))
-    .sort((a, b) => rank(b, tokens(destination)) - rank(a, tokens(destination)));
+    .sort((a, b) => rank(b, cityWords) - rank(a, cityWords));
 
   const usedIdentities = new Set<string>();
   const map: Record<string, string[]> = {};
@@ -266,19 +284,22 @@ export async function fetchImagesForQueries(
 
   unique.forEach((q, i) => {
     const words = tokens(q);
-    const pool = (results[i] ?? [])
-      .filter((c) => !isDisqualified(c))
-      .sort((a, b) => rank(b, words) - rank(a, words));
+    const clean = (results[i] ?? []).filter((c) => !isDisqualified(c));
+    // Only keep photos that actually depict the event, not just the city.
+    const relevant = clean
+      .filter((c) => matchesSubject(c, words, cityWords))
+      .sort((a, b) => rank(b, words, cityWords) - rank(a, words, cityWords));
 
     // Prefer photos not already used elsewhere in this itinerary.
-    const fresh = pool.filter((c) => !usedIdentities.has(identityOf(c.url)));
-    const chosen = (fresh.length ? fresh : pool).slice(0, 3);
+    const fresh = relevant.filter((c) => !usedIdentities.has(identityOf(c.url)));
+    const chosen = (fresh.length ? fresh : relevant).slice(0, 3);
 
     if (chosen.length) {
       usedIdentities.add(identityOf(chosen[0]!.url));
       map[q] = chosen.map((c) => c.url);
       return;
     }
+
 
     // Nothing usable for this event: reuse the shared destination photos.
     if (destPool.length) {
