@@ -102,17 +102,13 @@ export function TripGuide({
   const showAccessibility =
     input.accessibilityNeeds.length > 0 || Boolean(input.accessibilityNotes?.trim());
 
-  // Every stop needs a picture: activity query first, then a destination-wide fallback.
-  const fallbackQueries = [plan.destination, `${plan.destination} landmark`, `${plan.destination} skyline`];
+  // Each stop only ever shows a photo that actually matches the activity.
+  // No destination-wide filler: if nothing accurate is found, the card has no image.
   const imageQueries = useMemo(
     () =>
       Array.from(
-        new Set([
-          ...plan.days.flatMap((d) => d.items.map((i) => imageKeyFor(i, plan.destination))),
-          ...fallbackQueries,
-        ]),
+        new Set(plan.days.flatMap((d) => d.items.map((i) => imageKeyFor(i, plan.destination)))),
       ).slice(0, 45),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [plan],
   );
   const runFetchImages = useServerFn(fetchActivityImages);
@@ -123,7 +119,6 @@ export function TripGuide({
     retry: false,
     enabled: imageQueries.length > 0,
   });
-  const fallbackImage = fallbackQueries.map((q) => images?.[q]).find(Boolean);
 
   // One distinct photo per activity — a photo is never reused on the page.
   const assignedImages = useMemo(() => {
@@ -132,18 +127,15 @@ export function TripGuide({
     for (const day of plan.days) {
       for (const it of day.items) {
         const candidate = images?.[imageKeyFor(it, plan.destination)];
-        const pick = candidate && !used.has(candidate) ? candidate : undefined;
-        if (pick) {
-          used.add(pick);
-          byItem[itemKey(day.day, it)] = pick;
-        } else if (fallbackImage && !used.has(fallbackImage)) {
-          used.add(fallbackImage);
-          byItem[itemKey(day.day, it)] = fallbackImage;
+        if (candidate && !used.has(candidate)) {
+          used.add(candidate);
+          byItem[itemKey(day.day, it)] = candidate;
         }
       }
     }
     return byItem;
-  }, [plan, images, fallbackImage]);
+  }, [plan, images]);
+
 
 
   const budgetRows = [
@@ -287,23 +279,29 @@ export function TripGuide({
                   const image = assignedImages[itemKey(day.day, item)];
                   return (
                     <li key={i} className="surface-card group flex flex-col overflow-hidden">
-                      <div className="relative h-64 w-full shrink-0 overflow-hidden bg-secondary sm:h-80">
-                        {image && (
+                      {/* No accurate photo found → no image card at all. */}
+                      {image ? (
+                        <div className="relative h-64 w-full shrink-0 overflow-hidden bg-secondary sm:h-80">
                           <img
                             src={image}
                             alt={`${item.title}, ${plan.destination}`}
                             loading="lazy"
                             className="h-full w-full object-cover object-center transition-transform duration-700 ease-out group-hover:scale-[1.04]"
                           />
-                        )}
-                        <div
-                          className="pointer-events-none absolute inset-0 bg-gradient-to-t from-foreground/25 via-transparent to-foreground/10"
-                          aria-hidden="true"
-                        />
-                        <span className="absolute top-3 left-3 rounded-full bg-background/90 px-2.5 py-1 text-xs font-semibold tracking-wide uppercase shadow-sm backdrop-blur">
+                          <div
+                            className="pointer-events-none absolute inset-0 bg-gradient-to-t from-foreground/25 via-transparent to-foreground/10"
+                            aria-hidden="true"
+                          />
+                          <span className="absolute top-3 left-3 rounded-full bg-background/90 px-2.5 py-1 text-xs font-semibold tracking-wide uppercase shadow-sm backdrop-blur">
+                            {TIME_LABEL[item.timeOfDay]}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="mt-6 ml-6 w-fit rounded-full bg-accent px-2.5 py-1 text-xs font-semibold tracking-wide text-accent-foreground uppercase">
                           {TIME_LABEL[item.timeOfDay]}
                         </span>
-                      </div>
+                      )}
+
 
                       <div className="min-w-0 flex-1 p-6">
                         <h4 className="text-display text-xl font-semibold sm:text-2xl">{item.title}</h4>
