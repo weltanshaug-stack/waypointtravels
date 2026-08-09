@@ -221,12 +221,12 @@ export function TripGuide({
                 </Badge>
               </div>
 
-              <ol className="mt-5 grid gap-4 sm:grid-cols-2">
+              <ol className="mt-5 flex flex-col gap-6">
                 {items.map((item, i) => {
                   const image = images?.[imageKeyFor(item, plan.destination)] ?? fallbackImage;
                   return (
                     <li key={i} className="surface-card flex flex-col overflow-hidden">
-                      <div className="relative h-44 w-full shrink-0 bg-secondary">
+                      <div className="relative h-64 w-full shrink-0 bg-secondary sm:h-80">
                         {image && (
                           <img
                             src={image}
@@ -240,9 +240,10 @@ export function TripGuide({
                         </span>
                       </div>
 
-                      <div className="min-w-0 flex-1 p-5">
-                        <h4 className="text-display text-lg font-semibold">{item.title}</h4>
-                        <p className="mt-1.5 line-clamp-3 text-[0.95rem] leading-relaxed text-foreground/85">
+                      <div className="min-w-0 flex-1 p-6">
+                        <h4 className="text-display text-xl font-semibold sm:text-2xl">{item.title}</h4>
+                        <p className="mt-2 text-[1.02rem] leading-relaxed text-foreground/85">
+
                           <RichText text={item.description} />
                         </p>
                         <p className="mt-3 flex items-center gap-2 text-sm font-medium">
