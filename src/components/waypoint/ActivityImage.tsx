@@ -48,6 +48,8 @@ export function ActivityImage({
   const cached = typeof window !== "undefined" ? readCache()[cacheKey] : undefined;
   const list = candidates?.length ? candidates : [];
   const ordered = cached ? [cached, ...list.filter((u) => u !== cached)] : list;
+  // Undefined means "still resolving"; an empty array means "nothing found".
+  const resolving = candidates === undefined && !cached;
 
   const [index, setIndex] = useState(0);
   const [loaded, setLoaded] = useState(false);
@@ -55,22 +57,28 @@ export function ActivityImage({
   const current = ordered[index];
 
   // Reset when the candidate set changes (e.g. after a plan revision).
+  const signature = ordered.join("|");
   useEffect(() => {
     setIndex(0);
     setLoaded(false);
-  }, [cacheKey, ordered.length]);
+  }, [cacheKey, signature]);
 
   // Slow or hanging URL → move on to the next candidate.
   useEffect(() => {
     if (!current || loaded) return;
-    timer.current = setTimeout(() => setIndex((i) => i + 1), LOAD_TIMEOUT_MS);
+    timer.current = setTimeout(() => {
+      setLoaded(false);
+      setIndex((i) => i + 1);
+    }, LOAD_TIMEOUT_MS);
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
   }, [current, loaded]);
 
-  const exhausted = ordered.length > 0 && index >= ordered.length;
+  // Out of candidates (or none were ever found) → show the calm placeholder.
+  const exhausted = !resolving && !loaded && index >= ordered.length;
   const pending = !loaded && !exhausted;
+
 
   return (
     <div className={`relative overflow-hidden bg-secondary ${className}`}>
