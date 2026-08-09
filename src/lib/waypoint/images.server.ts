@@ -173,18 +173,8 @@ function isDisqualified(c: Candidate): boolean {
   const hay = haystackOf(c);
   if (REJECT.some((bad) => hay.includes(bad))) return true;
   // Reject genuinely small assets — they look bad in a large card.
-  if (c.width && c.width < 400) return true;
+  if (c.width && c.width < 640) return true;
   if (c.width && c.height && c.height / c.width > 1.6) return true; // extreme portrait
-  return false;
-}
-
-/** Partial match: "bakeries" still matches "bakery", "pastries" matches "pastry". */
-function hasWord(hay: string, word: string): boolean {
-  if (hay.includes(word)) return true;
-  if (word.length >= 6) {
-    const stem = word.slice(0, Math.max(4, word.length - 2));
-    return hay.includes(stem);
-  }
   return false;
 }
 
@@ -196,16 +186,15 @@ function scoreCandidate(c: Candidate, activity: string[], city: string[]): numbe
   const hay = haystackOf(c);
 
   if (activity.length === 0) return 0;
-  const matched = activity.filter((w) => hasWord(hay, w)).length;
+  const matched = activity.filter((w) => hay.includes(w)).length;
   if (matched === 0) return 0;
   let score = (matched / activity.length) * 50;
 
   // Location: full credit when the city is present, partial when no city was
   // requested (an exact-activity photo shouldn't be punished for that).
   if (city.length === 0) score += 20;
-  else if (city.some((w) => hasWord(hay, w))) score += 20;
+  else if (city.some((w) => hay.includes(w))) score += 20;
   else score += 10;
-
 
   // Quality by pixel width.
   const w = c.width ?? 0;
@@ -372,51 +361,12 @@ async function poolFor(query: string, destination: string): Promise<Scored[]> {
     if (pool.filter((p) => p.score >= 80).length >= 5) break;
   }
 
-  // Strict tiers produced nothing usable — relax rather than show a blank card.
-  if (pool.length === 0) {
-    const relaxed: { phrase: string; city: string[]; threshold: number }[] = [
-      { phrase: `${core} ${cityText}`.trim(), city, threshold: 55 },
-      { phrase: `${core} ${destination}`.trim(), city: destTokens, threshold: 45 },
-      { phrase: core, city: [], threshold: 1 },
-    ];
-    for (const level of relaxed) {
-      if (!level.phrase) continue;
-      const found = await candidatesFor(level.phrase, activity, level.city, level.threshold);
-      pool.push(...found);
-      if (pool.length) break;
-    }
-  }
-
   // Highest score first, de-duplicated by identity within this event.
   const byIdentity = new Map<string, Scored>();
   for (const s of pool.sort((a, b) => b.score - a.score)) {
     if (!byIdentity.has(s.identity)) byIdentity.set(s.identity, s);
   }
   return Array.from(byIdentity.values());
-}
-
-/**
- * Last-resort, always-relevant photos of the destination itself. Used only to
- * top up a card that would otherwise render empty; repeats are acceptable here
- * because a relevant repeat beats a blank container.
- */
-async function destinationFallbacks(destination: string): Promise<string[]> {
-  const city = destination.split(",")[0]?.trim() ?? destination.trim();
-  if (!city) return [];
-  const destTokens = tokens(city);
-  const phrases = [`${city} landmark`, `${city} cityscape`, city];
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const phrase of phrases) {
-    const found = await candidatesFor(phrase, destTokens, destTokens, 1);
-    for (const c of found.sort((a, b) => b.score - a.score)) {
-      if (seen.has(c.identity)) continue;
-      seen.add(c.identity);
-      out.push(c.url);
-    }
-    if (out.length >= 4) break;
-  }
-  return out.slice(0, 4);
 }
 
 /**
@@ -436,10 +386,7 @@ export async function fetchImagesForQueries(
   ).slice(0, 45);
 
   // Network-heavy candidate gathering runs in parallel...
-  const [pools, destPool] = await Promise.all([
-    Promise.all(unique.map((q) => poolFor(q, destination || q))),
-    destinationFallbacks(destination || unique[0] || ""),
-  ]);
+  const pools = await Promise.all(unique.map((q) => poolFor(q, destination || q)));
 
   // ...then selection is sequential so the primary photo is never used twice.
   const usedIdentities = new Set<string>();
@@ -452,7 +399,7 @@ export async function fetchImagesForQueries(
     if (!primary) {
       // No unique first choice — still hand over backups so the card isn't blank.
       const backups = pool.slice(0, 4).map((c) => c.url);
-      map[q] = [...backups, ...destPool].slice(0, 6);
+      if (backups.length) map[q] = backups;
       return;
     }
     usedIdentities.add(primary.identity);
@@ -461,10 +408,8 @@ export async function fetchImagesForQueries(
       .filter((c) => c.url !== primary.url && c.identity !== primary.identity)
       .slice(0, 4)
       .map((c) => c.url);
-    // Destination photos close out the ladder so the card can never end blank.
-    map[q] = [primary.url, ...fallbacks, ...destPool].slice(0, 7);
+    map[q] = [primary.url, ...fallbacks];
   });
 
   return map;
-
 }
