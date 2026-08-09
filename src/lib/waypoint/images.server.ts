@@ -261,6 +261,74 @@ async function searchWikipedia(query: string): Promise<Candidate[]> {
   }
 }
 
+/** Broad experience categories used for relevant backup photos. */
+const CATEGORIES = [
+  "museum",
+  "art gallery",
+  "temple",
+  "shrine",
+  "church",
+  "cathedral",
+  "mosque",
+  "castle",
+  "palace",
+  "park",
+  "garden",
+  "beach",
+  "market",
+  "food market",
+  "restaurant",
+  "cafe",
+  "bakery",
+  "bar",
+  "winery",
+  "hike",
+  "trail",
+  "mountain",
+  "waterfall",
+  "lake",
+  "river",
+  "boat",
+  "cruise",
+  "kayak",
+  "bike",
+  "walking tour",
+  "viewpoint",
+  "old town",
+  "square",
+  "bridge",
+  "zoo",
+  "aquarium",
+  "spa",
+  "hot spring",
+  "shopping street",
+  "hotel",
+  "train",
+  "cooking class",
+  "concert",
+  "theatre",
+  "lighthouse",
+  "harbour",
+  "island",
+  "desert",
+  "vineyard",
+  "street food",
+];
+
+/** Best-matching experience category for a query, if any. */
+function categoryOf(query: string): string | undefined {
+  const hay = query.toLowerCase();
+  const hits = CATEGORIES.filter((cat) => hay.includes(cat));
+  if (hits.length) return hits.sort((a, b) => b.length - a.length)[0];
+  const words = tokens(query);
+  if (words.some((w) => ["hiking", "trek", "trekking"].includes(w))) return "hike";
+  if (words.some((w) => ["dinner", "lunch", "brunch", "breakfast", "tasting"].includes(w)))
+    return "restaurant";
+  if (words.some((w) => ["stay", "check", "checkin", "accommodation"].includes(w))) return "hotel";
+  return undefined;
+}
+
+
 /**
  * Returns up to 3 ordered candidate URLs per query (best first) so the client can
  * fall through locally when one URL fails to load.
