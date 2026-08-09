@@ -372,12 +372,51 @@ async function poolFor(query: string, destination: string): Promise<Scored[]> {
     if (pool.filter((p) => p.score >= 80).length >= 5) break;
   }
 
+  // Strict tiers produced nothing usable — relax rather than show a blank card.
+  if (pool.length === 0) {
+    const relaxed: { phrase: string; city: string[]; threshold: number }[] = [
+      { phrase: `${core} ${cityText}`.trim(), city, threshold: 55 },
+      { phrase: `${core} ${destination}`.trim(), city: destTokens, threshold: 45 },
+      { phrase: core, city: [], threshold: 1 },
+    ];
+    for (const level of relaxed) {
+      if (!level.phrase) continue;
+      const found = await candidatesFor(level.phrase, activity, level.city, level.threshold);
+      pool.push(...found);
+      if (pool.length) break;
+    }
+  }
+
   // Highest score first, de-duplicated by identity within this event.
   const byIdentity = new Map<string, Scored>();
   for (const s of pool.sort((a, b) => b.score - a.score)) {
     if (!byIdentity.has(s.identity)) byIdentity.set(s.identity, s);
   }
   return Array.from(byIdentity.values());
+}
+
+/**
+ * Last-resort, always-relevant photos of the destination itself. Used only to
+ * top up a card that would otherwise render empty; repeats are acceptable here
+ * because a relevant repeat beats a blank container.
+ */
+async function destinationFallbacks(destination: string): Promise<string[]> {
+  const city = destination.split(",")[0]?.trim() ?? destination.trim();
+  if (!city) return [];
+  const destTokens = tokens(city);
+  const phrases = [`${city} landmark`, `${city} cityscape`, city];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const phrase of phrases) {
+    const found = await candidatesFor(phrase, destTokens, destTokens, 1);
+    for (const c of found.sort((a, b) => b.score - a.score)) {
+      if (seen.has(c.identity)) continue;
+      seen.add(c.identity);
+      out.push(c.url);
+    }
+    if (out.length >= 4) break;
+  }
+  return out.slice(0, 4);
 }
 
 /**
@@ -397,7 +436,10 @@ export async function fetchImagesForQueries(
   ).slice(0, 45);
 
   // Network-heavy candidate gathering runs in parallel...
-  const pools = await Promise.all(unique.map((q) => poolFor(q, destination || q)));
+  const [pools, destPool] = await Promise.all([
+    Promise.all(unique.map((q) => poolFor(q, destination || q))),
+    destinationFallbacks(destination || unique[0] || ""),
+  ]);
 
   // ...then selection is sequential so the primary photo is never used twice.
   const usedIdentities = new Set<string>();
@@ -410,7 +452,7 @@ export async function fetchImagesForQueries(
     if (!primary) {
       // No unique first choice — still hand over backups so the card isn't blank.
       const backups = pool.slice(0, 4).map((c) => c.url);
-      if (backups.length) map[q] = backups;
+      map[q] = [...backups, ...destPool].slice(0, 6);
       return;
     }
     usedIdentities.add(primary.identity);
@@ -419,8 +461,10 @@ export async function fetchImagesForQueries(
       .filter((c) => c.url !== primary.url && c.identity !== primary.identity)
       .slice(0, 4)
       .map((c) => c.url);
-    map[q] = [primary.url, ...fallbacks];
+    // Destination photos close out the ladder so the card can never end blank.
+    map[q] = [primary.url, ...fallbacks, ...destPool].slice(0, 7);
   });
 
   return map;
+
 }
