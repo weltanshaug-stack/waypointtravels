@@ -43,6 +43,14 @@ const REJECT = [
   "stamp",
   "portrait of",
   "comparison",
+  // People-centric shots: a selfie tells the traveller nothing about the place.
+  "selfie",
+  "self-portrait",
+  "selfportrait",
+  "me at",
+  "us at",
+  "my friend",
+  "myself",
 ];
 
 const STOP_WORDS = new Set([

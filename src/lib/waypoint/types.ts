@@ -285,6 +285,8 @@ export type TripResult = {
   /** null while the Trip Critic audit is still running. */
   check: TripCheck | null;
   generatedAt: string;
+  /** true only when this plan came from a "Change something" revision. */
+  revised?: boolean;
 };
 
 export const ADAPTATIONS = [
