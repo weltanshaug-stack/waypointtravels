@@ -3,12 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
   Accessibility,
+  ArrowRight,
   Check,
   Clock,
   Coffee,
   Flame,
   Footprints,
   Loader2,
+  Sparkles,
   TriangleAlert,
   Wallet,
 } from "lucide-react";
@@ -157,6 +159,8 @@ export function TripGuide({
     !input.useDayCount && input.startDate && input.endDate
       ? `${input.startDate} → ${input.endDate}`
       : `${plan.days.length} days · flexible`;
+
+  const changes = (plan.changeSummary ?? []).filter((c) => c.trim().length > 0);
 
   const problems = check?.checks.filter((c) => c.status !== "pass") ?? [];
   const pros = check?.pros?.length ? check.pros : [];
