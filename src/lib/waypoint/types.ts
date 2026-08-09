@@ -1,5 +1,5 @@
 /**
- * Shared WayPoint domain types. Client-safe: no server imports.
+ * Shared Waypoint domain types. Client-safe: no server imports.
  */
 
 export const TRAVEL_STYLES = [
@@ -190,6 +190,10 @@ export type TripPlan = {
 export type TripCheck = {
   fitScore: number;
   summary: string;
+  /** Short bullet strengths of the plan (always more pros than cons). */
+  pros: string[];
+  /** Short bullet trade-offs or watch-outs. */
+  cons: string[];
   checks: {
     name: string;
     status: "pass" | "warn" | "fail";
@@ -197,6 +201,7 @@ export type TripCheck = {
   }[];
   issues: { day?: number; issue: string; proposedFix: string }[];
 };
+
 
 export type TripResult = {
   input: TripInput;
@@ -282,7 +287,44 @@ export function validateTripDates(input: TripInput): string | null {
 }
 
 
+/** Rough floor for a realistic trip, per traveller per day, in the chosen currency. */
+const MIN_PER_PERSON_PER_DAY: Record<string, number> = {
+  USD: 60,
+  EUR: 55,
+  GBP: 50,
+  CAD: 80,
+  AUD: 90,
+  JPY: 9000,
+  INR: 3000,
+};
+
+/**
+ * Rejects budgets that could not cover the trip (e.g. $50 for 7 days).
+ * Returns a human-readable error, or null when the budget is plausible.
+ */
+export function validateTripBudget(input: TripInput): string | null {
+  const amount = Number(input.budgetTotal);
+  if (!Number.isFinite(amount) || amount <= 0) return "Enter your total budget for the trip.";
+
+  const travellers = Math.max(1, (input.adults || 0) + (input.children || 0));
+  const days = tripDayCount(input);
+  const floor = MIN_PER_PERSON_PER_DAY[input.currency] ?? 60;
+  const minimum = Math.round(floor * travellers * days);
+
+  if (amount < minimum) {
+    return `${formatMoney(amount, input.currency)} isn't enough for ${travellers} traveller${
+      travellers > 1 ? "s" : ""
+    } over ${days} day${days > 1 ? "s" : ""}. Plan on at least ${formatMoney(
+      minimum,
+      input.currency,
+    )} so we can build a realistic trip.`;
+  }
+  if (amount > 5_000_000) return "That budget is unrealistically high — enter a real total.";
+  return null;
+}
+
 export function formatMoney(amount: number, currency: string): string {
+
   try {
     return new Intl.NumberFormat("en-US", {
       style: "currency",

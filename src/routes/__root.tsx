@@ -79,17 +79,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "WayPoint — Where will you go next?" },
+      { title: "Waypoint — Where will you go next?" },
       {
         name: "description",
         content:
-          "WayPoint builds personalized, day-by-day travel itineraries around your budget, interests, pace and accessibility needs.",
+          "Waypoint builds personalized, day-by-day travel itineraries around your budget, interests, pace and accessibility needs.",
       },
-      { name: "author", content: "WayPoint" },
-      { property: "og:title", content: "WayPoint — Where will you go next?" },
+      { name: "author", content: "Waypoint" },
+      { property: "og:title", content: "Waypoint — Where will you go next?" },
       {
         property: "og:description",
-        content: "Tell WayPoint where you are going and what you love. Get a personalized itinerary.",
+        content: "Tell Waypoint where you are going and what you love. Get a personalized itinerary.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },

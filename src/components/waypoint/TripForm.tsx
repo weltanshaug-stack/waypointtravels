@@ -27,6 +27,7 @@ import {
   TRAVEL_STYLES,
   type TripInput,
   tripDayCount,
+  validateTripBudget,
   validateTripDates,
 } from "@/lib/waypoint/types";
 
@@ -142,6 +143,7 @@ export function TripForm({
 }) {
   const [step, setStep] = useState(0);
   const [showDateError, setShowDateError] = useState(false);
+  const [showBudgetError, setShowBudgetError] = useState(false);
   const set = <K extends keyof TripInput>(key: K, v: TripInput[K]) =>
     onChange({ ...value, [key]: v });
   const toggle = (key: "travelStyles" | "accessibilityNeeds" | "accommodation" | "transportation", item: string) => {
@@ -150,6 +152,7 @@ export function TripForm({
   };
 
   const dateError = validateTripDates(value);
+  const budgetError = validateTripBudget(value);
 
   const canAdvance = () => {
     if (step === 0) return value.destinationFlexible ? true : value.destination.trim().length > 1;
@@ -165,14 +168,25 @@ export function TripForm({
     return true;
   };
 
+  const blockedByBudget = () => {
+    if (!budgetError) return false;
+    setShowBudgetError(true);
+    setStep(2);
+    toast.error("Check your budget", { description: budgetError });
+    return true;
+  };
+
   const handleContinue = () => {
     if (step === 1 && blockedByDates()) return;
+    if (step === 2 && blockedByBudget()) return;
     setShowDateError(false);
+    setShowBudgetError(false);
     setStep((s) => s + 1);
   };
 
   const handleSubmit = () => {
     if (blockedByDates()) return;
+    if (blockedByBudget()) return;
     onSubmit();
   };
 
@@ -310,7 +324,10 @@ export function TripForm({
                   max={1_000_000}
                   placeholder="2000"
                   value={value.budgetTotal}
-                  onChange={(n) => set("budgetTotal", n)}
+                  onChange={(n) => {
+                    setShowBudgetError(false);
+                    set("budgetTotal", n);
+                  }}
                 />
 
                 <Select value={value.currency} onValueChange={(v) => set("currency", v)}>
@@ -326,6 +343,15 @@ export function TripForm({
                   </SelectContent>
                 </Select>
               </div>
+              {showBudgetError && budgetError && (
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm"
+                >
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                  <span>{budgetError}</span>
+                </div>
+              )}
             </Section>
             <Section title="Budget flexibility">
               <div className="flex flex-wrap gap-2">
@@ -402,9 +428,12 @@ export function TripForm({
             <Section title="Anything else we should know?" hint="Written in your own words — the agents treat this as a hard signal.">
               <Textarea
                 rows={5}
-                placeholder={
-                  "e.g. I want lots of local food. I don't like crowded tourist attractions. I want to wake up late. A mix of museums and outdoors."
-                }
+                placeholder={[
+                  "I love quiet places away from the crowds…",
+                  "I want to try as much local pasta as possible…",
+                  "I'd rather wake up late and take slow mornings…",
+                  "I want a mix of museums and time outdoors…",
+                ].join("\n")}
                 value={value.freeText}
                 onChange={(e) => set("freeText", e.target.value)}
               />

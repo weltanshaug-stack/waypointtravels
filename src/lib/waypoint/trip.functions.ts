@@ -22,7 +22,7 @@ import type {
 
 export const fetchActivityImages = createServerFn({ method: "POST" })
   .inputValidator((data: { queries: string[] }) => ({
-    queries: Array.isArray(data?.queries) ? data.queries.slice(0, 40) : [],
+    queries: Array.isArray(data?.queries) ? data.queries.slice(0, 45) : [],
   }))
   .handler(async ({ data }): Promise<Record<string, string>> =>
     fetchImagesForQueries(data.queries),

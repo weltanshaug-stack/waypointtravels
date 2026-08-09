@@ -34,8 +34,33 @@ const LEVEL_STYLE: Record<ActivityLevel, { className: string; icon: typeof Coffe
 };
 
 function imageKeyFor(item: ItineraryItem, destination: string): string {
-  const q = (item.imageQuery ?? "").trim();
-  return (q || `${item.title} ${destination}`).slice(0, 120);
+  const q = (item.imageQuery ?? "").trim() || item.title;
+  const city = destination.split(",")[0]?.trim() ?? "";
+  // Anchor the search to the city so lookups resolve to the right building.
+  const withCity = city && !q.toLowerCase().includes(city.toLowerCase()) ? `${q} ${city}` : q;
+  return withCity.slice(0, 120);
+}
+
+
+/**
+ * Renders the agent's copy, turning **Place Name** into bold text so specific
+ * venues stand out in descriptions.
+ */
+function RichText({ text }: { text: string }) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.startsWith("**") && part.endsWith("**") ? (
+          <strong key={i} className="font-semibold text-foreground">
+            {part.slice(2, -2)}
+          </strong>
+        ) : (
+          <span key={i}>{part}</span>
+        ),
+      )}
+    </>
+  );
 }
 
 const hours = (minutes: number) => `${Math.round((minutes / 60) * 10) / 10}h`;
@@ -110,6 +135,11 @@ export function TripGuide({
       : `${plan.days.length} days · flexible`;
 
   const problems = check?.checks.filter((c) => c.status !== "pass") ?? [];
+  const pros = check?.pros?.length ? check.pros : [];
+  // Fall back to the audit's own warnings when the model gave no explicit cons.
+  const cons = check?.cons?.length
+    ? check.cons
+    : problems.slice(0, 2).map((p) => `${p.name}: ${p.detail}`);
 
   return (
     <div className="space-y-10">
@@ -213,7 +243,7 @@ export function TripGuide({
                       <div className="min-w-0 flex-1 p-5">
                         <h4 className="text-display text-lg font-semibold">{item.title}</h4>
                         <p className="mt-1.5 line-clamp-3 text-[0.95rem] leading-relaxed text-foreground/85">
-                          {item.description}
+                          <RichText text={item.description} />
                         </p>
                         <p className="mt-3 flex items-center gap-2 text-sm font-medium">
                           <span>
@@ -316,22 +346,45 @@ export function TripGuide({
           </p>
         )}
 
-        {check &&
-          (problems.length === 0 ? (
-            <p className="mt-3 flex items-center gap-2 text-sm font-medium">
-              <Check className="h-4 w-4 text-primary" aria-hidden="true" /> No conflicts found.
-            </p>
-          ) : (
-            <p className="mt-3 flex items-start gap-2 text-sm">
-              <TriangleAlert
-                className="mt-0.5 h-4 w-4 shrink-0 text-warn-foreground"
-                aria-hidden="true"
-              />
-              <span>
-                <strong>{problems[0]!.name}:</strong> {problems[0]!.detail}
-              </span>
-            </p>
-          ))}
+        {check && (
+          <div className="mt-4 grid gap-6 sm:grid-cols-2">
+            <div>
+              <h3 className="text-xs font-semibold tracking-widest text-primary uppercase">
+                What works
+              </h3>
+              <ul className="mt-2 space-y-2">
+                {(pros.length ? pros : ["This plan matches the preferences you gave us."]).map(
+                  (pro, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm">
+                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                      <span>
+                        <RichText text={pro} />
+                      </span>
+                    </li>
+                  ),
+                )}
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">
+                Worth knowing
+              </h3>
+              <ul className="mt-2 space-y-2">
+                {(cons.length ? cons : ["No conflicts found in this plan."]).map((con, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm">
+                    <TriangleAlert
+                      className="mt-0.5 h-4 w-4 shrink-0 text-warn-foreground"
+                      aria-hidden="true"
+                    />
+                    <span>
+                      <RichText text={con} />
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );

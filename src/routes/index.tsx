@@ -5,16 +5,16 @@ import { Hero } from "@/components/wandor/Hero";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "WayPoint — Where will you go next?" },
+      { title: "Waypoint — Where will you go next?" },
       {
         name: "description",
         content:
-          "WayPoint turns what you love into a personalized day-by-day travel itinerary with costs, pace and accessibility built in.",
+          "Waypoint turns what you love into a personalized day-by-day travel itinerary with costs, pace and accessibility built in.",
       },
-      { property: "og:title", content: "WayPoint — Where will you go next?" },
+      { property: "og:title", content: "Waypoint — Where will you go next?" },
       {
         property: "og:description",
-        content: "Tell WayPoint about your trip and get a clear, personalized itinerary in minutes.",
+        content: "Tell Waypoint about your trip and get a clear, personalized itinerary in minutes.",
       },
     ],
   }),
@@ -86,7 +86,7 @@ function Landing() {
       </main>
 
       <footer className="border-t border-border py-8 text-center text-sm text-muted-foreground">
-        <span className="font-logo text-base">WayPoint</span> — personalized travel planning.
+        <span className="font-logo text-base">Waypoint</span> — personalized travel planning.
       </footer>
     </div>
   );

@@ -10,7 +10,7 @@ import type {
 import { tripDayCount } from "@/lib/waypoint/types";
 
 /**
- * WayPoint agent layer. Each agent is a separate logical module with its own
+ * Waypoint agent layer. Each agent is a separate logical module with its own
  * system prompt and contract. The orchestrator composes them:
  *
  *   Preference Analyzer -> Planner (destination/activity + budget +
@@ -59,7 +59,7 @@ ACCESSIBILITY NOTES: ${input.accessibilityNotes || "none provided"}
 /* ---------------- 1. Preference Analyzer Agent ---------------- */
 
 export async function runPreferenceAnalyzer(input: TripInput): Promise<PreferenceBrief> {
-  const system = `You are the Preference Analyzer agent inside WayPoint, an agentic travel planning system.
+  const system = `You are the Preference Analyzer agent inside Waypoint, an agentic travel planning system.
 Your only job is to convert raw traveller input into an explicit, machine-usable constraint brief for downstream planning agents.
 Extract hard constraints, infer implicit priorities, weight them, and flag planning risks.
 ${SAFETY_RULES}
@@ -92,16 +92,19 @@ const PLAN_SHAPE = `{"title":string,"destination":string,"destinationRationale":
 "highlights":[{"title":string,"reason":string}],"practicalNotes":[string]}`;
 
 
-const PLANNER_SYSTEM = `You are the Planner Orchestration agent inside WayPoint. You combine four specialist passes before emitting output:
+const PLANNER_SYSTEM = `You are the Planner Orchestration agent inside Waypoint. You combine four specialist passes before emitting output:
 1. DESTINATION/ACTIVITY PLANNER — generate candidate destinations/activities, then rank them against the traveller's weighted priorities. Drop generic tourist-trap picks when the traveller dislikes crowds.
-2. BUDGET AGENT — allocate the total budget across accommodation, food, transportation, activities and miscellaneous. Per-item costs must be per-group (all travellers) and the sum of day costs plus accommodation must stay within the stated total budget. Respect budget flexibility.
+2. BUDGET AGENT — sanity-check the total budget first: if it is clearly too low for the destination, group size and trip length, plan the most realistic affordable version, keep every cost honest (never fake low prices) and state the shortfall plainly in budget.notes. Then allocate the total budget across accommodation, food, transportation, activities and miscellaneous. Per-item costs must be per-group (all travellers) and the sum of day costs plus accommodation must stay within the stated total budget. Respect budget flexibility.
 3. ACCESSIBILITY AGENT — apply every accessibility constraint as a hard logistical filter (walking distance, stairs, seating, sensory load, dietary needs, medication storage). Add an accessibilityNote to any item where it is relevant, always phrased as reported/estimated.
 4. SCHEDULE OPTIMIZER — respect pace: Relaxed = max 2 activities/day, Balanced = 2-3, Packed = 3-4. Cluster geographically to minimise travel. Give realistic travelTimeMinutes between consecutive activities. Include arrival/departure realities on the first and last day, and explicit rest periods.
 
 Within each day, list items in chronological order: all morning items first, then afternoon, then evening.
 Write each item description as one short, warm, appealing sentence (max 18 words) — no filler, no repeated context.
+NAME REAL PLACES. Every stop must name a specific, real, well-known venue: an actual restaurant, museum, park, market, viewpoint or hotel. Never write vague stops like "check into a hotel", "have dinner", "explore the area" or "free time".
+ACCOMMODATION: instead of a generic hotel stop, name ONE specific real hotel (or a real, recognisable hotel in the right neighbourhood) that sits close to the other places on the itinerary, and say in the description why the location works (e.g. walking distance to the stops on days 2-3).
+BOLDING: in every description, wrap each specific proper place name in double asterisks, e.g. "Dinner at **Trattoria Sostanza**, five minutes from **Piazza del Duomo**." Bold only real named places, never generic words.
 Every item needs a specific whyItFits sentence that references the traveller's own stated preferences.
-Every item MUST have a non-empty imageQuery: a short real-world search phrase (2-6 words) naming the actual place or landmark that a photo exists of. If the stop is generic (a meal, a rest, a transfer), use the closest real, photographable place or neighbourhood nearby, e.g. "Senso-ji Temple Tokyo" or "Tsukiji Outer Market". Never a generic phrase like "local food".
+Every item MUST have a non-empty imageQuery: a short real-world search phrase (2-6 words) naming the actual physical building, landmark or landscape that a photograph exists of — e.g. "Senso-ji Temple Tokyo", "Hotel Lungarno Florence building". Never a map, logo, flag, crest, diagram or a generic phrase like "local food". If the stop is a meal or transfer, use the closest real photographable building or street nearby.
 Every day needs estimatedDayCost (sum of that day's item costs plus that day's share of food/local transport) and activityLevel: "Relaxed" (mostly sitting, little walking), "Moderate" (normal sightseeing) or "Active" (long walking, hiking or physically demanding). Match activityLevel to the traveller's pace and accessibility constraints, and alternate Active days with Relaxed ones.
 
 ${SAFETY_RULES}
@@ -123,7 +126,7 @@ export async function runPlanner(args: {
     `Build exactly ${days} day objects, numbered 1..${days}.`,
     input.destinationFlexible
       ? `The traveller is flexible on destination. Choose ONE concrete destination inside their preferred area (${input.preferredRegion || "anywhere"}) and justify it in destinationRationale.`
-      : `Keep the destination as stated and use destinationRationale to explain how the plan is shaped around this traveller.`,
+      : `Stated destination: "${input.destination}". If that is a broad region, country or continent (e.g. "Europe", "Asia", "Italy") rather than a single city, CHOOSE ONE specific city or town inside it that best fits this traveller's budget, pace, styles and accessibility needs — pick somewhere you can plan confidently — set destination to that city (with country) and justify the choice in destinationRationale. If it is already a specific place, keep it and use destinationRationale to explain how the plan is shaped around this traveller.`,
     previousPlan
       ? `You are REVISING an existing plan. Preserve everything that already matched the traveller's priorities and change only what the directive requires.\nExisting plan:\n${JSON.stringify(previousPlan)}`
       : "",
@@ -167,7 +170,7 @@ Keep every description to ONE short sentence (max 18 words) and whyItFits to one
     `Build exactly ${days} day objects, numbered 1..${days}.`,
     input.destinationFlexible
       ? `The traveller is flexible on destination. Choose ONE concrete destination inside their preferred area (${input.preferredRegion || "anywhere"}) and justify it in destinationRationale.`
-      : `Keep the destination as stated and use destinationRationale to explain how the plan is shaped around this traveller.`,
+      : `Stated destination: "${input.destination}". If that is a broad region, country or continent (e.g. "Europe", "Asia", "Italy") rather than a single city, CHOOSE ONE specific city or town inside it that best fits this traveller's budget, pace, styles and accessibility needs — pick somewhere you can plan confidently — set destination to that city (with country) and justify the choice in destinationRationale. If it is already a specific place, keep it and use destinationRationale to explain how the plan is shaped around this traveller.`,
     `Currency for all amounts: ${input.currency}.`,
   ].join("\n\n");
 
@@ -198,16 +201,17 @@ export async function runTripCritic(args: {
   brief: PreferenceBrief;
   plan: TripPlan;
 }): Promise<TripCheck> {
-  const system = `You are the Trip Critic agent inside WayPoint. You audit a draft itinerary against the traveller's constraints and score its fit.
+  const system = `You are the Trip Critic agent inside Waypoint. You audit a draft itinerary against the traveller's constraints and score its fit.
 Audit exactly these seven checks, in this order, using these names:
 "Budget consistency", "Time feasibility", "Travel distance", "Accessibility compatibility", "Pace", "Preference matching", "Scheduling conflicts".
 status is "pass", "warn" or "fail". Be genuinely critical: flag impossible travel times, over-packed days, budget overruns, and accessibility mismatches.
 For every warn/fail, add an issue entry with a concrete proposedFix (name the day).
 fitScore is 0-100 and must reflect the checks (any fail keeps it below 75).
 ${SAFETY_RULES}
+Also produce traveller-facing bullets: "pros" (3-5 short bullets, max 14 words each, on what this plan gets right for them) and "cons" (1-2 short bullets on real trade-offs or watch-outs). There must always be strictly more pros than cons.
 Return JSON exactly shaped as:
-{"fitScore":number,"summary":string,"checks":[{"name":string,"status":"pass"|"warn"|"fail","detail":string}],"issues":[{"day":number,"issue":string,"proposedFix":string}]}
-summary is 1-2 plain sentences the traveller can read.`;
+{"fitScore":number,"summary":string,"pros":[string],"cons":[string],"checks":[{"name":string,"status":"pass"|"warn"|"fail","detail":string}],"issues":[{"day":number,"issue":string,"proposedFix":string}]}
+summary is 1 plain sentence the traveller can read.`;
 
   const prompt = `Traveller input:\n${travellerSummary(args.input)}\n\nConstraint brief:\n${JSON.stringify(args.brief)}\n\nDraft itinerary:\n${JSON.stringify(args.plan)}\n\nAudit it.`;
 
@@ -215,6 +219,8 @@ summary is 1-2 plain sentences the traveller can read.`;
   return {
     fitScore: Math.max(0, Math.min(100, Math.round(Number(check.fitScore) || 0))),
     summary: check.summary ?? "",
+    pros: (check.pros ?? []).filter(Boolean).slice(0, 5),
+    cons: (check.cons ?? []).filter(Boolean).slice(0, 2),
     checks: (check.checks ?? []).map((c) => ({
       name: c.name,
       status: c.status === "fail" || c.status === "warn" ? c.status : "pass",

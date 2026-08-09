@@ -10,7 +10,6 @@ import { AgentProgress } from "@/components/waypoint/AgentProgress";
 import { TripGuide } from "@/components/waypoint/TripGuide";
 import { useAuth } from "@/hooks/useAuth";
 import { adaptTrip, checkTrip, planTrip, saveTrip } from "@/lib/waypoint/trip.functions";
-import { PROMPT_KEY } from "@/components/wandor/Hero";
 import {
   demoTripInput,
   emptyTripInput,
@@ -77,14 +76,7 @@ function PlanPage() {
       }
       const draft = sessionStorage.getItem(DRAFT_KEY);
       const base = draft && !demo ? (JSON.parse(draft) as TripInput) : null;
-      const prompt = sessionStorage.getItem(PROMPT_KEY);
-      if (prompt) sessionStorage.removeItem(PROMPT_KEY);
-      if (base || prompt) {
-        setInput((current) => ({
-          ...(base ?? current),
-          ...(prompt ? { freeText: prompt } : {}),
-        }));
-      }
+      if (base) setInput(base);
     } catch {
       /* ignore corrupt storage */
     }
@@ -148,6 +140,8 @@ function PlanPage() {
       });
       persistResult(next);
       toast.success("Itinerary updated.");
+      // Bring the traveller back to the top so they see the revised plan from day 1.
+      window.scrollTo({ top: 0, behavior: "smooth" });
       void audit(next);
     } catch (e) {
       const message = e instanceof Error ? e.message : "The revision could not be completed.";
