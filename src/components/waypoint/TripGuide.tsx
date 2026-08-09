@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
   Accessibility,
@@ -108,16 +108,44 @@ export function TripGuide({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [plan],
   );
+  // Fetched in small batches so one failed or rate-limited request only affects
+  // a few cards instead of wiping out every image on the page.
+  const chunks = useMemo(() => {
+    const size = 6;
+    const out: string[][] = [];
+    for (let i = 0; i < imageQueries.length; i += size) out.push(imageQueries.slice(i, i + size));
+    return out;
+  }, [imageQueries]);
+
   const runFetchImages = useServerFn(fetchActivityImages);
-  const { data: images } = useQuery({
-    queryKey: ["activity-images", plan.destination, imageQueries],
-    queryFn: () =>
-      runFetchImages({ data: { queries: imageQueries, destination: plan.destination } }),
-    staleTime: Infinity,
-    retry: 2,
-    retryDelay: 1200,
-    enabled: imageQueries.length > 0,
+  const results = useQueries({
+    queries: chunks.map((chunk) => ({
+      queryKey: ["activity-images", plan.destination, chunk],
+      queryFn: () => runFetchImages({ data: { queries: chunk, destination: plan.destination } }),
+      staleTime: Infinity,
+      retry: 2,
+      retryDelay: 1200,
+    })),
   });
+
+  const images = useMemo(() => {
+    const merged: Record<string, string[]> = {};
+    for (const r of results) if (r.data) Object.assign(merged, r.data);
+    return merged;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results.map((r) => (r.data ? "1" : "0")).join("")]);
+
+  // A card is only "still resolving" while its own batch is in flight.
+  const resolvedKeys = useMemo(() => new Set(Object.keys(images)), [images]);
+  const settledKeys = useMemo(() => {
+    const set = new Set<string>();
+    results.forEach((r, i) => {
+      if (!r.isPending) for (const q of chunks[i] ?? []) set.add(q);
+    });
+    return set;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results.map((r) => (r.isPending ? "p" : "s")).join(""), chunks]);
+
 
   const budgetRows = [
     { label: "Stay", value: plan.budget.accommodation },
@@ -228,7 +256,13 @@ export function TripGuide({
                       <div className="relative h-64 w-full shrink-0 sm:h-80">
                         <ActivityImage
                           cacheKey={key}
-                          candidates={images?.[key]}
+                          candidates={
+                            resolvedKeys.has(key)
+                              ? images[key]
+                              : settledKeys.has(key)
+                                ? []
+                                : undefined
+                          }
                           alt={`${item.title}, ${plan.destination}`}
                           priority={day.day === 1 && i === 0}
                           className="h-full w-full"
