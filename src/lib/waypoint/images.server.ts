@@ -293,35 +293,71 @@ export async function fetchImagesForQueries(
   const map: Record<string, string[]> = {};
   let destCursor = 0;
 
-  unique.forEach((q, i) => {
-    const words = tokens(q);
-    const clean = (results[i] ?? []).filter((c) => !isDisqualified(c));
-    // Only keep photos that actually depict the event, not just the city.
-    const relevant = clean
-      .filter((c) => matchesSubject(c, words, cityWords))
+  /** Best on-topic, not-yet-used photos for one query, from a candidate pool. */
+  const pick = (pool: Candidate[], words: string[]): Candidate[] => {
+    const relevant = pool
+      .filter((c) => !isDisqualified(c) && matchesSubject(c, words, cityWords))
       .sort((a, b) => rank(b, words, cityWords) - rank(a, words, cityWords));
-
-    // Prefer photos not already used elsewhere in this itinerary.
     const fresh = relevant.filter((c) => !usedIdentities.has(identityOf(c.url)));
-    const chosen = (fresh.length ? fresh : relevant).slice(0, 3);
+    return (fresh.length ? fresh : relevant).slice(0, 3);
+  };
 
+  const commit = (q: string, chosen: Candidate[]) => {
+    usedIdentities.add(identityOf(chosen[0]!.url));
+    map[q] = chosen
+      .flatMap(urlsOf)
+      .filter((u, idx, arr) => arr.indexOf(u) === idx)
+      .slice(0, 4);
+  };
+
+  const unresolved: string[] = [];
+
+  unique.forEach((q, i) => {
+    const chosen = pick(results[i] ?? [], tokens(q));
+    if (chosen.length) commit(q, chosen);
+    else unresolved.push(q);
+  });
+
+  // Second chance: search the activity words alone (city dropped), which often
+  // finds a true photo of the experience. Bounded so request count stays small.
+  const rescues = unresolved.slice(0, 12);
+  const rescueResults = await Promise.all(
+    rescues.map((q) => {
+      const subject = tokens(q).filter((w) => !cityWords.includes(w));
+      return subject.length ? searchOpenverse(subject.join(" ")) : Promise.resolve([]);
+    }),
+  );
+
+  rescues.forEach((q, i) => {
+    const chosen = pick(rescueResults[i] ?? [], tokens(q));
     if (chosen.length) {
-      usedIdentities.add(identityOf(chosen[0]!.url));
-      map[q] = chosen.map((c) => c.url);
+      commit(q, chosen);
       return;
     }
-
-
-    // Nothing usable for this event: reuse the shared destination photos.
+    // Truly nothing on topic: rotate through shared destination photos so the
+    // same picture isn't repeated on every unresolved card.
     if (destPool.length) {
       const start = destCursor % destPool.length;
       destCursor += 1;
-      map[q] = [destPool[start]!, ...destPool.slice(0, 2)]
-        .map((c) => c.url)
+      const rotated = [...destPool.slice(start), ...destPool.slice(0, start)].slice(0, 2);
+      map[q] = rotated
+        .flatMap(urlsOf)
         .filter((u, idx, arr) => arr.indexOf(u) === idx)
-        .slice(0, 3);
+        .slice(0, 4);
     }
   });
 
+  unresolved.slice(12).forEach((q) => {
+    if (!destPool.length) return;
+    const start = destCursor % destPool.length;
+    destCursor += 1;
+    const rotated = [...destPool.slice(start), ...destPool.slice(0, start)].slice(0, 2);
+    map[q] = rotated
+      .flatMap(urlsOf)
+      .filter((u, idx, arr) => arr.indexOf(u) === idx)
+      .slice(0, 4);
+  });
+
   return map;
+
 }
