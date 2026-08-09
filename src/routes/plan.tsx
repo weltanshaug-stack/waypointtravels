@@ -10,14 +10,14 @@ import { AgentProgress } from "@/components/waypoint/AgentProgress";
 import { TripGuide } from "@/components/waypoint/TripGuide";
 import { useAuth } from "@/hooks/useAuth";
 import { adaptTrip, checkTrip, planTrip, saveTrip } from "@/lib/waypoint/trip.functions";
-import { demoTripResult } from "@/lib/waypoint/demo-trip";
 import {
-  demoTripInput,
   emptyTripInput,
+  randomDemoTripInput,
   type AdaptationId,
   type TripInput,
   type TripResult,
 } from "@/lib/waypoint/types";
+
 
 /** Only accessibility answers persist between trips; everything else starts fresh. */
 const ACCESS_KEY = "waypoint:accessibility";
