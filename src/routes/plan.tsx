@@ -257,11 +257,14 @@ function PlanPage() {
             <TripForm
               value={input}
               onChange={persistDraft}
-              onSubmit={generate}
+              onSubmit={() => generate()}
               onDemo={() => {
-                persistDraft(demoTripInput);
-                toast.success("Demo trip loaded — 6 days in Tokyo.");
+                const pick = randomDemoTripInput(input.destination);
+                persistDraft(pick);
+                toast.success(`Demo trip — generating ${pick.destination}…`);
+                void generate(pick);
               }}
+
             />
           </div>
         )}
