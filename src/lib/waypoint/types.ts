@@ -196,7 +196,7 @@ export const DEMO_TRIPS: TripInput[] = [
     budgetTotal: 1900,
     budgetCategory: "Moderate",
     adults: 1,
-    travelStyles: ["Food", "Culture", "Culture"],
+    travelStyles: ["Food", "Culture", "History"],
     freeText: "Street food, markets and museums. I like busy, characterful neighbourhoods.",
     pace: "Packed",
     accommodation: ["Hotel"],
