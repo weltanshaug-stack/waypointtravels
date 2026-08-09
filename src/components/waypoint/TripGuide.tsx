@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ItineraryImage } from "@/components/waypoint/ItineraryImage";
 import { fetchActivityImages } from "@/lib/waypoint/trip.functions";
 import {
   ADAPTATIONS,
@@ -109,13 +108,12 @@ export function TripGuide({
     [plan],
   );
   const runFetchImages = useServerFn(fetchActivityImages);
-  const { data: images, isPending: imagesLoading } = useQuery({
+  const { data: images } = useQuery({
     queryKey: ["activity-images", plan.destination, imageQueries],
     queryFn: () =>
       runFetchImages({ data: { queries: imageQueries, destination: plan.destination } }),
     staleTime: Infinity,
-    retry: 1,
-    gcTime: Infinity,
+    retry: false,
     enabled: imageQueries.length > 0,
   });
 
@@ -222,22 +220,22 @@ export function TripGuide({
 
               <ol className="mt-5 flex flex-col gap-6">
                 {items.map((item, i) => {
-                  const candidates = images?.[imageKeyFor(item, plan.destination)] ?? [];
+                  const image = images?.[imageKeyFor(item, plan.destination)];
                   return (
                     <li key={i} className="surface-card flex flex-col overflow-hidden">
-                      <div className="relative h-64 w-full shrink-0 sm:h-80">
-                        <ItineraryImage
-                          candidates={candidates}
-                          alt={`${item.title}, ${plan.destination}`}
-                          priority={day.day === 1 && i === 0}
-                          loading={imagesLoading}
-                          className="h-full w-full"
-                        />
+                      <div className="relative h-64 w-full shrink-0 bg-secondary sm:h-80">
+                        {image && (
+                          <img
+                            src={image}
+                            alt={`${item.title}, ${plan.destination}`}
+                            loading="lazy"
+                            className="h-full w-full object-cover"
+                          />
+                        )}
                         <span className="absolute top-3 left-3 rounded-full bg-background/90 px-2.5 py-1 text-xs font-semibold tracking-wide uppercase">
                           {TIME_LABEL[item.timeOfDay]}
                         </span>
                       </div>
-
 
                       <div className="min-w-0 flex-1 p-6">
                         <h4 className="text-display text-xl font-semibold sm:text-2xl">{item.title}</h4>

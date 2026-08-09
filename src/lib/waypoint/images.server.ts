@@ -369,17 +369,10 @@ async function poolFor(query: string, destination: string): Promise<Scored[]> {
   return Array.from(byIdentity.values());
 }
 
-/**
- * Returns an ORDERED list of candidate image URLs per query (best first) so the
- * client can fall through to the next-best image whenever one fails to load.
- * The top pick is globally unique inside the itinerary; lower-ranked backups and
- * the shared destination fallbacks may repeat — a relevant photo always beats an
- * empty card.
- */
 export async function fetchImagesForQueries(
   queries: string[],
   destination = "",
-): Promise<Record<string, string[]>> {
+): Promise<Record<string, string>> {
   const unique = Array.from(
     new Set(
       queries
@@ -389,35 +382,22 @@ export async function fetchImagesForQueries(
   ).slice(0, 45);
 
   // Network-heavy candidate gathering runs in parallel...
-  const [pools, destPool] = await Promise.all([
-    Promise.all(unique.map((q) => poolFor(q, destination || q))),
-    destination ? poolFor(`${destination} landmark`, destination) : Promise.resolve([]),
-  ]);
-  const destFallbacks = destPool.slice(0, 4).map((c) => c.url);
+  const pools = await Promise.all(unique.map((q) => poolFor(q, destination || q)));
 
-  // ...then selection is sequential so the primary photo is never used twice.
+  // ...then selection is sequential so no photo is used twice in one plan.
   const usedIdentities = new Set<string>();
   const usedUrls = new Set<string>();
-  const map: Record<string, string[]> = {};
+  const map: Record<string, string> = {};
 
   unique.forEach((q, i) => {
     const pool = pools[i] ?? [];
-    const primary = pool.find((c) => !usedIdentities.has(c.identity) && !usedUrls.has(c.url));
-    if (primary) {
-      usedIdentities.add(primary.identity);
-      usedUrls.add(primary.url);
-    }
-    const ordered = [
-      ...(primary ? [primary.url] : []),
-      // Backups from the same searches, best score first.
-      ...pool.filter((c) => c.url !== primary?.url).map((c) => c.url),
-      // Last resort: a relevant photo of the destination itself.
-      ...destFallbacks,
-    ];
-    const list = Array.from(new Set(ordered)).slice(0, 8);
-    if (list.length > 0) map[q] = list;
+    const pick = pool.find((c) => !usedIdentities.has(c.identity) && !usedUrls.has(c.url));
+    // No unique candidate clears the bar → no image, rather than a wrong one.
+    if (!pick) return;
+    usedIdentities.add(pick.identity);
+    usedUrls.add(pick.url);
+    map[q] = pick.url;
   });
 
   return map;
 }
-
