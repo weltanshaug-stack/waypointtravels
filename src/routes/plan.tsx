@@ -67,7 +67,7 @@ function PlanPage() {
   const runSave = useServerFn(saveTrip);
   const runCheck = useServerFn(checkTrip);
 
-  // Restore in-progress work. Only accessibility preferences carry between trips.
+  // Restore only the current in-progress session. Nothing carries between trips.
   useEffect(() => {
     try {
       const savedResult = sessionStorage.getItem(RESULT_KEY);
@@ -76,26 +76,11 @@ function PlanPage() {
         setResult(parsed);
         setInput(parsed.input);
         setPhase("result");
-        return;
       }
-      if (demo) return;
-      const saved = localStorage.getItem(ACCESS_KEY);
-      if (!saved) return;
-      const access = JSON.parse(saved) as {
-        accessibilityNeeds?: string[];
-        accessibilityNotes?: string;
-      };
-      setInput((prev) => ({
-        ...prev,
-        accessibilityNeeds: Array.isArray(access.accessibilityNeeds)
-          ? access.accessibilityNeeds
-          : prev.accessibilityNeeds,
-        accessibilityNotes: access.accessibilityNotes ?? prev.accessibilityNotes,
-      }));
     } catch {
       /* ignore corrupt storage */
     }
-  }, [demo]);
+  }, []);
 
   // ?demo=true generates a randomized demo trip once on arrival.
   const demoStarted = useRef(false);
@@ -107,22 +92,10 @@ function PlanPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [demo]);
 
-
-
   const persistDraft = (next: TripInput) => {
     setInput(next);
-    try {
-      localStorage.setItem(
-        ACCESS_KEY,
-        JSON.stringify({
-          accessibilityNeeds: next.accessibilityNeeds,
-          accessibilityNotes: next.accessibilityNotes,
-        }),
-      );
-    } catch {
-      /* ignore */
-    }
   };
+
 
   const persistResult = (next: TripResult | null) => {
     setResult(next);
