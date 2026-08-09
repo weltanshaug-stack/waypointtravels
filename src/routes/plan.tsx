@@ -52,10 +52,10 @@ function PlanPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const [input, setInput] = useState<TripInput>(demo ? demoTripInput : emptyTripInput);
-  // ?demo=true lands straight on the finished guide — no planning wait.
-  const [phase, setPhase] = useState<Phase>(demo ? "result" : "form");
-  const [result, setResult] = useState<TripResult | null>(demo ? demoTripResult : null);
+  const [input, setInput] = useState<TripInput>(emptyTripInput);
+  const [phase, setPhase] = useState<Phase>("form");
+  const [result, setResult] = useState<TripResult | null>(null);
+
 
   const [error, setError] = useState<string | null>(null);
   const [adapting, setAdapting] = useState<AdaptationId | null>(null);
