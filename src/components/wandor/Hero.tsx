@@ -4,6 +4,7 @@ import { Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import heroFallback from "@/assets/hero.jpg";
+import logo from "@/assets/logo.png.asset.json";
 
 const VIDEO_SRC =
   "https://pollen-batch-41236914.figma.site/_components/v2/f0ee2dae7671c170c34f12e31c4cb41418976c98/769c564298c132f7919405cd9f17c1b1231f341d.769c5642.mp4";
@@ -56,14 +57,15 @@ export function Hero() {
       <div
         className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-[687px]"
         style={{
-          background: "linear-gradient(180deg, rgba(255,255,255,1) 0%, rgba(255,255,255,0) 100%)",
+          background: "linear-gradient(180deg, rgba(253,248,238,1) 0%, rgba(253,248,238,0) 100%)",
         }}
       />
 
       <div className="relative z-[2] mx-auto max-w-[1360px]">
         <nav className="flex items-center justify-between px-6 pt-5 pb-4 md:px-20 md:pt-6">
-          <Link to="/" className="font-logo text-[32px] leading-none md:text-[38px]">
-            WayPoint
+          <Link to="/" className="flex items-center gap-2.5">
+            <img src={logo.url} alt="WayPoint logo" className="h-9 w-9 object-contain md:h-11 md:w-11" />
+            <span className="font-logo text-[30px] leading-none md:text-[36px]">WayPoint</span>
           </Link>
 
           <div className="absolute left-1/2 flex -translate-x-1/2 gap-8 max-md:hidden">
