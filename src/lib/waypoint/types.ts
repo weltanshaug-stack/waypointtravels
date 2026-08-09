@@ -124,6 +124,93 @@ export const demoTripInput: TripInput = {
   transportation: ["Public transportation", "Taxi / rideshare"],
 };
 
+/**
+ * Demo presets. "Try a demo trip" picks one at random and generates the guide
+ * straight away, so every demo run shows a different destination.
+ */
+export const DEMO_TRIPS: TripInput[] = [
+  demoTripInput,
+  {
+    ...emptyTripInput,
+    destination: "Lisbon, Portugal",
+    useDayCount: true,
+    daysCount: 4,
+    budgetTotal: 1800,
+    budgetCategory: "Moderate",
+    adults: 2,
+    travelStyles: ["Food", "Culture", "Nightlife"],
+    freeText: "We love seafood, live music and walkable neighbourhoods. Slow mornings, please.",
+    pace: "Relaxed",
+    accommodation: ["Hotel"],
+    transportation: ["Walking", "Public transportation"],
+  },
+  {
+    ...emptyTripInput,
+    destination: "Kyoto, Japan",
+    useDayCount: true,
+    daysCount: 5,
+    budgetTotal: 3200,
+    budgetCategory: "Comfortable",
+    adults: 2,
+    travelStyles: ["Culture", "Nature", "Photography"],
+    freeText: "Temples, gardens and quiet corners away from the biggest crowds.",
+    pace: "Balanced",
+    accommodation: ["Hotel"],
+    transportation: ["Public transportation", "Walking"],
+  },
+  {
+    ...emptyTripInput,
+    destination: "Barcelona, Spain",
+    useDayCount: true,
+    daysCount: 5,
+    budgetTotal: 2600,
+    budgetCategory: "Moderate",
+    adults: 2,
+    children: 2,
+    childrenAges: "7, 10",
+    travelStyles: ["Family-friendly", "Beaches", "Food"],
+    freeText: "Kid-friendly days with beach time and short museum visits.",
+    pace: "Relaxed",
+    accommodation: ["Vacation rental"],
+    transportation: ["Public transportation", "Walking"],
+  },
+  {
+    ...emptyTripInput,
+    destination: "Reykjavík, Iceland",
+    useDayCount: true,
+    daysCount: 4,
+    budgetTotal: 3400,
+    budgetCategory: "Comfortable",
+    adults: 2,
+    travelStyles: ["Nature", "Adventure", "Photography"],
+    freeText: "Waterfalls, hot springs and dramatic landscapes. Driving is fine.",
+    pace: "Balanced",
+    accommodation: ["Hotel"],
+    transportation: ["Rental car"],
+  },
+  {
+    ...emptyTripInput,
+    destination: "Mexico City, Mexico",
+    useDayCount: true,
+    daysCount: 5,
+    budgetTotal: 1900,
+    budgetCategory: "Moderate",
+    adults: 1,
+    travelStyles: ["Food", "Culture", "History"],
+    freeText: "Street food, markets and museums. I like busy, characterful neighbourhoods.",
+    pace: "Packed",
+    accommodation: ["Hotel"],
+    transportation: ["Walking", "Taxi / rideshare"],
+  },
+];
+
+/** A random demo trip, never the same one twice in a row when possible. */
+export function randomDemoTripInput(exclude?: string): TripInput {
+  const pool = DEMO_TRIPS.filter((t) => t.destination !== exclude);
+  const list = pool.length ? pool : DEMO_TRIPS;
+  return list[Math.floor(Math.random() * list.length)]!;
+}
+
 /* ---------- Agent output shapes ---------- */
 
 export type PreferenceBrief = {
