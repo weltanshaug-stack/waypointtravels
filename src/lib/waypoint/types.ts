@@ -85,7 +85,7 @@ export const emptyTripInput: TripInput = {
   endDate: "",
   daysCount: 5,
   useDayCount: false,
-  budgetTotal: 2000,
+  budgetTotal: 0,
   currency: "USD",
   budgetFlexibility: "Somewhat flexible",
   budgetCategory: "Moderate",
