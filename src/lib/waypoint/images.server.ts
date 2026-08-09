@@ -173,8 +173,18 @@ function isDisqualified(c: Candidate): boolean {
   const hay = haystackOf(c);
   if (REJECT.some((bad) => hay.includes(bad))) return true;
   // Reject genuinely small assets — they look bad in a large card.
-  if (c.width && c.width < 640) return true;
+  if (c.width && c.width < 400) return true;
   if (c.width && c.height && c.height / c.width > 1.6) return true; // extreme portrait
+  return false;
+}
+
+/** Partial match: "bakeries" still matches "bakery", "pastries" matches "pastry". */
+function hasWord(hay: string, word: string): boolean {
+  if (hay.includes(word)) return true;
+  if (word.length >= 6) {
+    const stem = word.slice(0, Math.max(4, word.length - 2));
+    return hay.includes(stem);
+  }
   return false;
 }
 
@@ -186,15 +196,16 @@ function scoreCandidate(c: Candidate, activity: string[], city: string[]): numbe
   const hay = haystackOf(c);
 
   if (activity.length === 0) return 0;
-  const matched = activity.filter((w) => hay.includes(w)).length;
+  const matched = activity.filter((w) => hasWord(hay, w)).length;
   if (matched === 0) return 0;
   let score = (matched / activity.length) * 50;
 
   // Location: full credit when the city is present, partial when no city was
   // requested (an exact-activity photo shouldn't be punished for that).
   if (city.length === 0) score += 20;
-  else if (city.some((w) => hay.includes(w))) score += 20;
+  else if (city.some((w) => hasWord(hay, w))) score += 20;
   else score += 10;
+
 
   // Quality by pixel width.
   const w = c.width ?? 0;
