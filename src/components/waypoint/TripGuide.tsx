@@ -120,6 +120,27 @@ export function TripGuide({
   });
   const fallbackImage = fallbackQueries.map((q) => images?.[q]).find(Boolean);
 
+  // One distinct photo per activity — a photo is never reused on the page.
+  const assignedImages = useMemo(() => {
+    const used = new Set<string>();
+    const byItem: Record<string, string> = {};
+    for (const day of plan.days) {
+      day.items.forEach((it, i) => {
+        const candidate = images?.[imageKeyFor(it, plan.destination)];
+        const pick = candidate && !used.has(candidate) ? candidate : undefined;
+        if (pick) {
+          used.add(pick);
+          byItem[`${day.day}-${i}`] = pick;
+        } else if (fallbackImage && !used.has(fallbackImage)) {
+          used.add(fallbackImage);
+          byItem[`${day.day}-${i}`] = fallbackImage;
+        }
+      });
+    }
+    return byItem;
+  }, [plan, images, fallbackImage]);
+
+
   const budgetRows = [
     { label: "Stay", value: plan.budget.accommodation },
     { label: "Food", value: plan.budget.food },
