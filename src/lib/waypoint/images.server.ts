@@ -1,93 +1,111 @@
 /**
- * Free, key-less activity imagery via the Wikipedia API.
- * Best-effort only: any failure resolves to no image and the UI falls back to
- * an illustrated tile.
+ * Free, key-less photography for itinerary stops.
  *
- * We deliberately reject maps, logos, flags, crests, diagrams and other
- * non-photographic assets so every stop shows the actual place.
+ * Primary source: Openverse (openly-licensed photo search) — it indexes real
+ * photographs of specific venues, buildings and streets.
+ * Fallback: the Wikipedia article thumbnail for the place.
+ *
+ * Maps, logos, flags, crests, diagrams and other non-photographic assets are
+ * rejected so every stop shows the actual place.
  */
 
-const ENDPOINT = "https://en.wikipedia.org/w/api.php";
+const OPENVERSE = "https://api.openverse.org/v1/images/";
+const WIKIPEDIA = "https://en.wikipedia.org/w/api.php";
+const UA = "Waypoint/1.0 (travel planning app)";
 
-type WikiPage = {
-  title?: string;
-  thumbnail?: { source?: string };
-  original?: { source?: string };
-};
-
-type WikiResponse = { query?: { pages?: Record<string, WikiPage> } };
-
-/** Filenames that are almost never a photo of the physical place. */
+/** Words that mean the asset is not a photo of the physical place. */
 const REJECT = [
   "map",
   "locator",
   "logo",
   "flag",
+  "coat of arms",
   "coat_of_arms",
-  "coatofarms",
   "crest",
-  "seal",
+  "seal of",
   "emblem",
   "wappen",
   "diagram",
-  "chart",
-  "plan_of",
+  "floor plan",
   "floorplan",
+  "blueprint",
+  "chart",
   "icon",
   "banner",
   "wordmark",
-  "svg",
-  "blank",
-  "location",
+  "signature",
+  "screenshot",
 ];
 
-function isPhoto(url: string): boolean {
-  const file = decodeURIComponent(url).toLowerCase();
-  if (/\.(svg|png)(\?|$)/.test(file.split("/").pop() ?? "")) return false;
-  return !REJECT.some((bad) => file.includes(bad));
+function looksLikePhoto(text: string, url: string): boolean {
+  const haystack = `${text} ${decodeURIComponent(url)}`.toLowerCase();
+  if (/\.(svg|gif)(\?|$)/.test(url.toLowerCase())) return false;
+  return !REJECT.some((bad) => haystack.includes(bad));
 }
 
-/** Asks Wikipedia for up to `limit` candidate images for one search phrase. */
-async function candidates(query: string, limit = 4): Promise<string[]> {
-  const url = `${ENDPOINT}?${new URLSearchParams({
+type OpenverseResult = { title?: string; url?: string; thumbnail?: string };
+
+async function openverse(query: string): Promise<string | null> {
+  const url = `${OPENVERSE}?${new URLSearchParams({
+    q: query,
+    page_size: "8",
+    mature: "false",
+    license_type: "all",
+  }).toString()}`;
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": UA, Accept: "application/json" },
+      signal: AbortSignal.timeout(7000),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { results?: OpenverseResult[] };
+    const hit = (json.results ?? []).find(
+      (r) => r.url && looksLikePhoto(r.title ?? "", r.url),
+    );
+    return hit?.url ?? null;
+  } catch {
+    return null;
+  }
+}
+
+type WikiPage = { title?: string; thumbnail?: { source?: string } };
+
+async function wikipedia(query: string): Promise<string | null> {
+  const url = `${WIKIPEDIA}?${new URLSearchParams({
     action: "query",
     generator: "search",
     gsrsearch: query,
-    gsrlimit: String(limit),
+    gsrlimit: "4",
     prop: "pageimages",
     piprop: "thumbnail",
     pithumbsize: "1000",
     format: "json",
     origin: "*",
   }).toString()}`;
-
   try {
     const res = await fetch(url, {
-      headers: { "User-Agent": "Waypoint/1.0 (travel planning demo)" },
+      headers: { "User-Agent": UA },
       signal: AbortSignal.timeout(6000),
     });
-    if (!res.ok) return [];
-    const json = (await res.json()) as WikiResponse;
-    return Object.values(json.query?.pages ?? {})
-      .map((p) => p.thumbnail?.source ?? p.original?.source ?? "")
-      .filter(Boolean);
+    if (!res.ok) return null;
+    const json = (await res.json()) as { query?: { pages?: Record<string, WikiPage> } };
+    const hit = Object.values(json.query?.pages ?? {}).find((p) => {
+      const src = p.thumbnail?.source;
+      return src && looksLikePhoto(p.title ?? "", src);
+    });
+    return hit?.thumbnail?.source ?? null;
   } catch {
-    return [];
+    return null;
   }
 }
 
-/**
- * Resolves one search phrase to a photograph of the place itself, trying a
- * building-biased variant of the phrase before the raw phrase.
- */
+/** Resolves one search phrase to a photograph of the place itself. */
 async function lookupOne(query: string): Promise<string | null> {
-  const attempts = [`${query} building exterior`, query, `${query} view`];
-  for (const attempt of attempts) {
-    const urls = await candidates(attempt);
-    const photo = urls.find(isPhoto);
-    if (photo) return photo;
-  }
-  return null;
+  return (
+    (await openverse(query)) ??
+    (await openverse(`${query} building`)) ??
+    (await wikipedia(query))
+  );
 }
 
 export async function fetchImagesForQueries(
