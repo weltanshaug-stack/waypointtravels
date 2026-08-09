@@ -171,11 +171,13 @@ function PlanPage() {
     }
   }
 
-  async function generate() {
+  async function generate(override?: TripInput) {
+    const payload = override ?? input;
     setError(null);
     setPhase("planning");
     try {
-      const next = await runPlan({ data: { input } });
+      const next = await runPlan({ data: { input: payload } });
+
       persistResult(next);
       setPhase("result");
       void audit(next);
