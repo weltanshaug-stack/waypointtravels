@@ -1,8 +1,19 @@
 import { useEffect, useRef, useState } from "react";
-import { ImageIcon } from "lucide-react";
+import fallbackCoast from "@/assets/fallback-travel-1.jpg";
+import fallbackValley from "@/assets/fallback-travel-2.jpg";
+import fallbackHero from "@/assets/hero.jpg";
 
 const CACHE_KEY = "waypoint:image-cache";
-const LOAD_TIMEOUT_MS = 8000;
+const LOAD_TIMEOUT_MS = 6000;
+
+/** Bundled travel photos — always available, zero network requests. */
+const LOCAL_FALLBACKS = [fallbackCoast, fallbackValley, fallbackHero];
+
+function pickLocalFallback(seed: string): string {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) hash = (hash * 31 + seed.charCodeAt(i)) % 9973;
+  return LOCAL_FALLBACKS[hash % LOCAL_FALLBACKS.length]!;
+}
 
 /** Remembers which candidate URL actually loaded, per image key. */
 function readCache(): Record<string, string> {
@@ -27,9 +38,10 @@ function writeCache(key: string, url: string) {
  * Renders the first candidate image that actually loads.
  *
  * - shows a skeleton while loading
- * - falls through to the next-best candidate on error or timeout
+ * - falls through to the next candidate on error or timeout
+ * - ends on a bundled travel photo, so the container is never blank/broken
  * - caches the winning URL so it isn't re-resolved on re-render
- * - never leaves a broken icon or empty container behind
+ * - retries are bounded by the candidate list — never endless
  */
 export function ActivityImage({
   cacheKey,
@@ -46,71 +58,69 @@ export function ActivityImage({
   className?: string;
 }) {
   const cached = typeof window !== "undefined" ? readCache()[cacheKey] : undefined;
-  const list = candidates?.length ? candidates : [];
-  const ordered = cached ? [cached, ...list.filter((u) => u !== cached)] : list;
+  const remote = candidates?.length ? candidates : [];
+  const local = pickLocalFallback(cacheKey);
+  const ordered = [
+    ...(cached ? [cached] : []),
+    ...remote.filter((u) => u !== cached),
+    local,
+  ];
 
   const [index, setIndex] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const current = ordered[index];
+  const current = ordered[Math.min(index, ordered.length - 1)]!;
+  const isLocal = current === local;
 
   // Reset when the candidate set changes (e.g. after a plan revision).
   useEffect(() => {
     setIndex(0);
     setLoaded(false);
-  }, [cacheKey, ordered.length]);
+  }, [cacheKey, remote.length]);
 
-  // Slow or hanging URL → move on to the next candidate.
+  // Slow or hanging URL → move on to the next candidate (local photo can't hang).
   useEffect(() => {
-    if (!current || loaded) return;
+    if (loaded || isLocal) return;
     timer.current = setTimeout(() => setIndex((i) => i + 1), LOAD_TIMEOUT_MS);
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
-  }, [current, loaded]);
-
-  const exhausted = ordered.length > 0 && index >= ordered.length;
-  const pending = !loaded && !exhausted;
+  }, [current, loaded, isLocal]);
 
   return (
     <div className={`relative overflow-hidden bg-secondary ${className}`}>
-      {current && (
-        <img
-          key={current}
-          src={current}
-          alt={alt}
-          loading={priority ? "eager" : "lazy"}
-          decoding="async"
-          onLoad={(e) => {
-            const img = e.currentTarget;
-            // Guard against 1px trackers / error placeholders.
-            if (img.naturalWidth < 200) {
-              setIndex((i) => i + 1);
-              return;
-            }
-            setLoaded(true);
-            writeCache(cacheKey, current);
-          }}
-          onError={() => {
-            setLoaded(false);
+      <img
+        key={current}
+        src={current}
+        alt={alt}
+        loading={priority ? "eager" : "lazy"}
+        decoding="async"
+        onLoad={(e) => {
+          // Guard against 1px trackers / error placeholders.
+          if (!isLocal && e.currentTarget.naturalWidth < 200) {
             setIndex((i) => i + 1);
-          }}
-          className={`h-full w-full object-cover transition-opacity duration-500 ${
-            loaded ? "opacity-100" : "opacity-0"
-          }`}
-        />
-      )}
+            return;
+          }
+          setLoaded(true);
+          if (!isLocal) writeCache(cacheKey, current);
+        }}
+        onError={() => {
+          if (isLocal) {
+            // Bundled asset: nothing left to try, just show it as-is.
+            setLoaded(true);
+            return;
+          }
+          setLoaded(false);
+          setIndex((i) => i + 1);
+        }}
+        className={`h-full w-full object-cover transition-opacity duration-500 ${
+          loaded ? "opacity-100" : "opacity-0"
+        }`}
+      />
 
       {/* Loading skeleton keeps the container size stable. */}
-      {pending && (
+      {!loaded && (
         <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-secondary via-muted to-secondary" />
-      )}
-
-      {/* Nothing loadable: a calm branded placeholder, never a broken icon. */}
-      {exhausted && !loaded && (
-        <div className="absolute inset-0 flex items-center justify-center bg-accent/60">
-          <ImageIcon className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
-        </div>
       )}
     </div>
   );

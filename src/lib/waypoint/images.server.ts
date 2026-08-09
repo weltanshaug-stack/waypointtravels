@@ -1,22 +1,18 @@
 /**
- * Strict itinerary image selection pipeline.
+ * Lightweight itinerary image lookup.
  *
- * For every itinerary event we:
- *   1. Generate MULTIPLE queries (exact event + location, activity + location,
- *      activity + destination, broader activity) instead of one search.
- *   2. Retrieve many candidates per query from Openverse (openly licensed photo
- *      search) with Wikipedia article thumbnails as a secondary source.
- *   3. Hard-filter anything that isn't a usable photo of the experience
- *      (selfies, posed portraits, maps, logos, screenshots, collages,
- *      infographics, watermarks, low-resolution or broken assets).
- *   4. Score every survivor 0-100:
- *        event match 50 | location 20 | quality 15 | aesthetics 10 | clean 5
- *   5. Only accept a candidate that clears the tier threshold (80 for the
- *      event/attraction tiers), walking a fallback ladder before ever
- *      considering a generic destination photo.
- *   6. Deduplicate globally — an image (or a crop/resize of it) is never used
- *      twice inside one itinerary. If nothing unique clears the bar, the event
- *      gets NO image rather than a wrong one.
+ * Design goals (deliberately simple + cheap):
+ *   - ONE image-search request per unique itinerary query (Openverse, free,
+ *     openly licensed photo search). No per-event fallback ladders.
+ *   - ONE extra request in total for a shared destination photo set, used only
+ *     when an event's own search came back empty.
+ *   - Filter out anything that clearly isn't a photo of a place (maps, logos,
+ *     screenshots, selfies, posters, ...), then rank by simple relevance.
+ *   - Return a few ordered URLs per query so the client can fall through
+ *     without hitting the network again.
+ *
+ * No AI-generated image URLs are trusted anywhere: every URL comes from a real
+ * search result, and the client still validates that it actually loads.
  */
 
 const OPENVERSE = "https://api.openverse.org/v1/images/";
@@ -25,7 +21,6 @@ const UA = "Waypoint/1.0 (travel planning app)";
 
 /** Words that mean the asset is not a usable photo of the experience. */
 const REJECT = [
-  // not a photo of a place
   "map",
   "locator",
   "logo",
@@ -35,7 +30,6 @@ const REJECT = [
   "crest",
   "seal of",
   "emblem",
-  "wappen",
   "diagram",
   "floor plan",
   "floorplan",
@@ -54,44 +48,26 @@ const REJECT = [
   "brochure",
   "advertisement",
   "advert",
-  // screenshots / composites
   "screenshot",
   "screen shot",
   "collage",
   "montage",
-  "comparison",
-  "before and after",
-  "side by side",
-  "panel of",
   "watermark",
-  // selfies / posed portraits / influencer shots
   "selfie",
   "self-portrait",
   "self portrait",
   "portrait of",
   "headshot",
   "posing",
-  "poses",
   "posed",
-  "me at",
-  "myself",
-  "my trip",
   "instagram",
   "tiktok",
   "influencer",
-  "model shoot",
   "photoshoot",
-  "closeup of face",
-  "close-up of face",
-  // low quality markers
   "blurry",
-  "blurred",
   "pixelated",
   "low resolution",
-  "lowres",
   "thumbnail",
-  "test image",
-  "scan of",
 ];
 
 const STOP_WORDS = new Set([
@@ -113,9 +89,6 @@ const STOP_WORDS = new Set([
   "visit",
   "explore",
   "near",
-  "de",
-  "la",
-  "el",
 ]);
 
 type Candidate = {
@@ -125,8 +98,6 @@ type Candidate = {
   height?: number | undefined;
   tags?: string | undefined;
 };
-
-type Scored = { url: string; score: number; threshold: number; identity: string };
 
 function tokens(text: string): string[] {
   return text
@@ -146,10 +117,7 @@ function haystackOf(c: Candidate): string {
   return `${c.title} ${c.tags ?? ""} ${decoded}`.toLowerCase();
 }
 
-/**
- * Identity used for global de-duplication. Strips thumbnail size prefixes and
- * extensions so crops/resizes of the same photo collapse to one key.
- */
+/** De-duplication identity: crops/resizes of the same photo collapse to one key. */
 function identityOf(url: string): string {
   let decoded = url;
   try {
@@ -165,63 +133,41 @@ function identityOf(url: string): string {
     .replace(/[^a-z0-9]/g, "");
 }
 
-/** Hard rejections that no score can rescue. */
+/** Hard rejections: not a photo, wrong format, or too small to look good. */
 function isDisqualified(c: Candidate): boolean {
   const url = c.url.toLowerCase();
   if (!/^https?:\/\//.test(url)) return true;
   if (/\.(svg|gif|tif|tiff)(\?|$)/.test(url)) return true;
-  const hay = haystackOf(c);
-  if (REJECT.some((bad) => hay.includes(bad))) return true;
-  // Reject genuinely small assets — they look bad in a large card.
+  if (REJECT.some((bad) => haystackOf(c).includes(bad))) return true;
   if (c.width && c.width < 640) return true;
   if (c.width && c.height && c.height / c.width > 1.6) return true; // extreme portrait
   return false;
 }
 
-/**
- * Scores a candidate 0-100 against the event.
- *   event match 50 · location 20 · quality 15 · aesthetics 10 · clean 5
- */
-function scoreCandidate(c: Candidate, activity: string[], city: string[]): number {
+/** Simple relevance rank: word overlap, then resolution, then landscape framing. */
+function rank(c: Candidate, words: string[]): number {
   const hay = haystackOf(c);
-
-  if (activity.length === 0) return 0;
-  const matched = activity.filter((w) => hay.includes(w)).length;
-  if (matched === 0) return 0;
-  let score = (matched / activity.length) * 50;
-
-  // Location: full credit when the city is present, partial when no city was
-  // requested (an exact-activity photo shouldn't be punished for that).
-  if (city.length === 0) score += 20;
-  else if (city.some((w) => hay.includes(w))) score += 20;
-  else score += 10;
-
-  // Quality by pixel width.
+  const matched = words.filter((w) => hay.includes(w)).length;
+  const relevance = words.length ? (matched / words.length) * 70 : 35;
   const w = c.width ?? 0;
-  score += w >= 1600 ? 15 : w >= 1000 ? 11 : w >= 640 ? 6 : 8;
-
-  // Aesthetics: landscape framing reads best in a hero card.
   const h = c.height ?? 0;
-  if (w && h) score += w > h * 1.15 ? 10 : w >= h ? 7 : 3;
-  else score += 6;
-
-  // Professionalism: survived the reject list.
-  score += 5;
-
-  return Math.round(score);
+  const quality = w >= 1600 ? 20 : w >= 1000 ? 14 : 8;
+  const framing = w && h ? (w > h ? 10 : 4) : 6;
+  return Math.round(relevance + quality + framing);
 }
 
-async function openverseCandidates(query: string): Promise<Candidate[]> {
+/** One Openverse request. */
+async function searchOpenverse(query: string): Promise<Candidate[]> {
   const url = `${OPENVERSE}?${new URLSearchParams({
     q: query,
-    page_size: "20",
+    page_size: "12",
     mature: "false",
     license_type: "all",
   }).toString()}`;
   try {
     const res = await fetch(url, {
       headers: { "User-Agent": UA, Accept: "application/json" },
-      signal: AbortSignal.timeout(7000),
+      signal: AbortSignal.timeout(6000),
     });
     if (!res.ok) return [];
     const json = (await res.json()) as {
@@ -247,12 +193,13 @@ async function openverseCandidates(query: string): Promise<Candidate[]> {
   }
 }
 
-async function wikipediaCandidates(query: string): Promise<Candidate[]> {
+/** One Wikipedia request — used only for the shared destination fallback set. */
+async function searchWikipedia(query: string): Promise<Candidate[]> {
   const url = `${WIKIPEDIA}?${new URLSearchParams({
     action: "query",
     generator: "search",
     gsrsearch: query,
-    gsrlimit: "6",
+    gsrlimit: "8",
     prop: "pageimages",
     piprop: "thumbnail",
     pithumbsize: "1600",
@@ -269,10 +216,7 @@ async function wikipediaCandidates(query: string): Promise<Candidate[]> {
       query?: {
         pages?: Record<
           string,
-          {
-            title?: string;
-            thumbnail?: { source?: string; width?: number; height?: number };
-          }
+          { title?: string; thumbnail?: { source?: string; width?: number; height?: number } }
         >;
       };
     };
@@ -289,89 +233,11 @@ async function wikipediaCandidates(query: string): Promise<Candidate[]> {
   }
 }
 
-/** All acceptable candidates for one search phrase, scored. */
-async function candidatesFor(
-  phrase: string,
-  activity: string[],
-  city: string[],
-  threshold: number,
-): Promise<Scored[]> {
-  const raw = [
-    ...(await openverseCandidates(phrase)),
-    ...(await wikipediaCandidates(phrase)),
-  ].filter((c) => !isDisqualified(c));
-
-  return raw
-    .map((c) => ({
-      url: c.url,
-      score: scoreCandidate(c, activity, city),
-      threshold,
-      identity: identityOf(c.url),
-    }))
-    .filter((s) => s.score >= s.threshold);
-}
-
 /**
- * Splits "<activity words> <city>" (the shape the planner emits) into the
- * activity tokens and the city tokens.
- */
-function split(query: string): { activity: string[]; city: string[]; core: string; cityText: string } {
-  const words = query.trim().split(/\s+/).filter(Boolean);
-  const cityText = words.length > 1 ? words[words.length - 1]! : "";
-  const core = (words.length > 1 ? words.slice(0, -1) : words).join(" ");
-  return {
-    activity: tokens(core),
-    city: tokens(cityText),
-    core,
-    cityText,
-  };
-}
-
-/**
- * Builds the full, ordered candidate pool for one event across every fallback
- * level. Nothing is chosen here — selection happens later so we can enforce
- * global uniqueness across the whole itinerary.
- */
-async function poolFor(query: string, destination: string): Promise<Scored[]> {
-  const { activity, city, core, cityText } = split(query);
-  const destTokens = tokens(destination);
-
-  const levels: { phrase: string; activity: string[]; city: string[]; threshold: number }[] = [
-    // L1 — exact attraction + activity + location.
-    { phrase: query, activity, city, threshold: 80 },
-    { phrase: `${core} ${cityText} photograph`.trim(), activity, city, threshold: 80 },
-    // L2 — exact attraction + location.
-    { phrase: `${core} ${cityText}`.trim(), activity, city, threshold: 80 },
-    // L3 — activity + location.
-    { phrase: `${core} ${destination}`.trim(), activity, city: destTokens, threshold: 78 },
-    // L4 — activity + destination region, any angle.
-    { phrase: `${core} ${destination} photograph`.trim(), activity, city: destTokens, threshold: 74 },
-    // L5 — visually similar activity anywhere (still recognisably the activity).
-    { phrase: core, activity, city: [], threshold: 68 },
-  ];
-
-  const pool: Scored[] = [];
-  const seenPhrase = new Set<string>();
-  for (const level of levels) {
-    if (!level.phrase || seenPhrase.has(level.phrase)) continue;
-    seenPhrase.add(level.phrase);
-    const found = await candidatesFor(level.phrase, level.activity, level.city, level.threshold);
-    pool.push(...found);
-    // Stop early once we have a healthy set of strong, on-event candidates.
-    if (pool.filter((p) => p.score >= 80).length >= 5) break;
-  }
-
-  // Highest score first, de-duplicated by identity within this event.
-  const byIdentity = new Map<string, Scored>();
-  for (const s of pool.sort((a, b) => b.score - a.score)) {
-    if (!byIdentity.has(s.identity)) byIdentity.set(s.identity, s);
-  }
-  return Array.from(byIdentity.values());
-}
-
-/**
- * Returns an ORDERED list of candidate URLs per query (best first) so the client
- * can fall through to the next-best image whenever one fails to load.
+ * Returns up to 3 ordered candidate URLs per query (best first) so the client can
+ * fall through locally when one URL fails to load.
+ *
+ * Request budget: 1 request per unique query + 1 shared destination request.
  */
 export async function fetchImagesForQueries(
   queries: string[],
@@ -385,78 +251,45 @@ export async function fetchImagesForQueries(
     ),
   ).slice(0, 45);
 
-  // Network-heavy candidate gathering runs in parallel...
-  const pools = await Promise.all(unique.map((q) => poolFor(q, destination || q)));
+  const [results, destinationPhotos] = await Promise.all([
+    Promise.all(unique.map((q) => searchOpenverse(q))),
+    destination ? searchWikipedia(`${destination} landmark`) : Promise.resolve([]),
+  ]);
 
-  // ...then selection is sequential so the primary photo is never used twice.
+  const destPool = destinationPhotos
+    .filter((c) => !isDisqualified(c))
+    .sort((a, b) => rank(b, tokens(destination)) - rank(a, tokens(destination)));
+
   const usedIdentities = new Set<string>();
-  const usedUrls = new Set<string>();
   const map: Record<string, string[]> = {};
+  let destCursor = 0;
 
   unique.forEach((q, i) => {
-    const pool = pools[i] ?? [];
-    const primary = pool.find((c) => !usedIdentities.has(c.identity) && !usedUrls.has(c.url));
-    if (!primary) {
-      // No unique first choice — still hand over backups so the card isn't blank.
-      const backups = pool.slice(0, 4).map((c) => c.url);
-      if (backups.length) map[q] = backups;
+    const words = tokens(q);
+    const pool = (results[i] ?? [])
+      .filter((c) => !isDisqualified(c))
+      .sort((a, b) => rank(b, words) - rank(a, words));
+
+    // Prefer photos not already used elsewhere in this itinerary.
+    const fresh = pool.filter((c) => !usedIdentities.has(identityOf(c.url)));
+    const chosen = (fresh.length ? fresh : pool).slice(0, 3);
+
+    if (chosen.length) {
+      usedIdentities.add(identityOf(chosen[0]!.url));
+      map[q] = chosen.map((c) => c.url);
       return;
     }
-    usedIdentities.add(primary.identity);
-    usedUrls.add(primary.url);
-    const fallbacks = pool
-      .filter((c) => c.url !== primary.url && c.identity !== primary.identity)
-      .slice(0, 4)
-      .map((c) => c.url);
-    map[q] = [primary.url, ...fallbacks];
+
+    // Nothing usable for this event: reuse the shared destination photos.
+    if (destPool.length) {
+      const start = destCursor % destPool.length;
+      destCursor += 1;
+      map[q] = [destPool[start]!, ...destPool.slice(0, 2)]
+        .map((c) => c.url)
+        .filter((u, idx, arr) => arr.indexOf(u) === idx)
+        .slice(0, 3);
+    }
   });
-
-  // ---- Guarantee: every query ends up with at least one usable photo. ----
-  const missing = unique.filter((q) => !(map[q]?.length));
-  if (missing.length) {
-    // Threshold-free rescue on the event phrase itself, then on the destination.
-    const rescues = await Promise.all(
-      missing.map(async (q) => {
-        const { core, cityText } = split(q);
-        const phrases = [
-          `${core} ${cityText}`.trim(),
-          core,
-          `${core} ${destination}`.trim(),
-        ].filter((p, idx, arr) => p.length > 2 && arr.indexOf(p) === idx);
-
-        const found: Candidate[] = [];
-        for (const phrase of phrases) {
-          const raw = [
-            ...(await openverseCandidates(phrase)),
-            ...(await wikipediaCandidates(phrase)),
-          ].filter((c) => !isDisqualified(c));
-          found.push(...raw);
-          if (found.length >= 5) break;
-        }
-        return { q, found };
-      }),
-    );
-
-    // Shared destination photos as the absolute last resort.
-    let destPool: Candidate[] = [];
-    if (rescues.some((r) => r.found.length === 0) && destination) {
-      destPool = [
-        ...(await wikipediaCandidates(`${destination} landmark`)),
-        ...(await openverseCandidates(`${destination} cityscape landmark`)),
-      ].filter((c) => !isDisqualified(c));
-    }
-
-    for (const { q, found } of rescues) {
-      const list = (found.length ? found : destPool).filter((c) => !usedUrls.has(c.url));
-      const chosen = (list.length ? list : found.length ? found : destPool).slice(0, 5);
-      if (!chosen.length) continue;
-      const first = chosen[0]!;
-      usedUrls.add(first.url);
-      usedIdentities.add(identityOf(first.url));
-      map[q] = chosen.map((c) => c.url);
-    }
-  }
 
   return map;
 }
-
