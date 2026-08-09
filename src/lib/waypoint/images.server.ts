@@ -99,9 +99,14 @@ type OpenverseResult = { title?: string; url?: string };
 async function openverse(query: string, minHits: number): Promise<string[]> {
   const url = `${OPENVERSE}?${new URLSearchParams({
     q: query,
-    page_size: "12",
+    page_size: "16",
     mature: "false",
     license_type: "all",
+    // Aesthetics: prefer large, wide, photographic files — they crop well into
+    // the wide itinerary cards instead of looking pixelated or awkward.
+    aspect_ratio: "wide",
+    size: "large",
+    extension: "jpg,jpeg,png",
   }).toString()}`;
   try {
     const res = await fetch(url, {
