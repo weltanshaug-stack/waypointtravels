@@ -73,17 +73,17 @@ export function TripGuide({
     input.accessibilityNeeds.length > 0 || Boolean(input.accessibilityNotes?.trim());
 
   // Every stop needs a picture: activity query first, then a destination-wide fallback.
-  const fallbackQuery = `${plan.destination} landmark`;
+  const fallbackQueries = [plan.destination, `${plan.destination} landmark`, `${plan.destination} skyline`];
   const imageQueries = useMemo(
     () =>
       Array.from(
         new Set([
           ...plan.days.flatMap((d) => d.items.map((i) => imageKeyFor(i, plan.destination))),
-          fallbackQuery,
-          plan.destination,
+          ...fallbackQueries,
         ]),
-      ).slice(0, 40),
-    [plan, fallbackQuery],
+      ).slice(0, 45),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [plan],
   );
   const runFetchImages = useServerFn(fetchActivityImages);
   const { data: images } = useQuery({
@@ -93,7 +93,7 @@ export function TripGuide({
     retry: false,
     enabled: imageQueries.length > 0,
   });
-  const fallbackImage = images?.[fallbackQuery] ?? images?.[plan.destination];
+  const fallbackImage = fallbackQueries.map((q) => images?.[q]).find(Boolean);
 
   const budgetRows = [
     { label: "Stay", value: plan.budget.accommodation },
