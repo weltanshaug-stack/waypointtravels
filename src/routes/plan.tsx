@@ -233,14 +233,8 @@ function PlanPage() {
               value={input}
               onChange={persistDraft}
               onSubmit={generate}
-              onDemo={() => {
-                // The demo skips the planning phase entirely.
-                setInput(demoTripInput);
-                persistResult(demoTripResult);
-                setPhase("result");
-                window.scrollTo({ top: 0, behavior: "smooth" });
-                toast.success("Demo guide loaded — 6 days in Tokyo.");
-              }}
+              onDemo={runDemoTrip}
+
             />
           </div>
         )}
