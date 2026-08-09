@@ -182,7 +182,7 @@ function variants(query: string): { q: string; minHits: number }[] {
     { q: query, minHits: 1 },
     { q: `${core} photograph`, minHits: 1 },
     { q: core, minHits: 1 },
-    { q: query, minHits: 0 },
+    // Deliberately no minHits: 0 pass — an irrelevant photo is worse than none.
   ];
   // Deduplicate identical phrase+threshold pairs.
   const seen = new Set<string>();
@@ -193,6 +193,7 @@ function variants(query: string): { q: string; minHits: number }[] {
     return true;
   });
 }
+
 
 /**
  * Ranked photo candidates for one search phrase, strongest match first.
