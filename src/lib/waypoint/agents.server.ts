@@ -323,5 +323,6 @@ export function normalisePlan(plan: TripPlan, input: TripInput): TripPlan {
     days,
     highlights: (plan.highlights ?? []).filter((h) => h && h.title),
     practicalNotes: (plan.practicalNotes ?? []).filter(Boolean),
+    changeSummary: (plan.changeSummary ?? []).filter(Boolean).slice(0, 4),
   };
 }
