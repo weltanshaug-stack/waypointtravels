@@ -93,11 +93,19 @@ const STOP_WORDS = new Set([
 
 type Candidate = {
   url: string;
+  /** Openverse-hosted proxy copy — loads even when the origin blocks hotlinking. */
+  thumbnail?: string | undefined;
   title: string;
   width?: number | undefined;
   height?: number | undefined;
   tags?: string | undefined;
 };
+
+/** Ordered URLs for one photo: full-size first, reliable proxy copy as backup. */
+function urlsOf(c: Candidate): string[] {
+  return [c.url, c.thumbnail].filter((u): u is string => Boolean(u));
+}
+
 
 function tokens(text: string): string[] {
   return text
