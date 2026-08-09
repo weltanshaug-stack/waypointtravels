@@ -58,7 +58,14 @@ export const adaptTrip = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }): Promise<TripResult> => {
     const { brief, plan, check } = await orchestrateAdaptation(data);
-    return { input: data.input, brief, plan, check, generatedAt: new Date().toISOString() };
+    return {
+      input: data.input,
+      brief,
+      plan,
+      check,
+      generatedAt: new Date().toISOString(),
+      revised: true,
+    };
   });
 
 
