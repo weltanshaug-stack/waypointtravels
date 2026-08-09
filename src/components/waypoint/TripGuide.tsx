@@ -113,7 +113,8 @@ export function TripGuide({
   const runFetchImages = useServerFn(fetchActivityImages);
   const { data: images } = useQuery({
     queryKey: ["activity-images", plan.destination, imageQueries],
-    queryFn: () => runFetchImages({ data: { queries: imageQueries } }),
+    queryFn: () =>
+      runFetchImages({ data: { queries: imageQueries, destination: plan.destination } }),
     staleTime: Infinity,
     retry: false,
     enabled: imageQueries.length > 0,
