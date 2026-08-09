@@ -97,6 +97,18 @@ function PlanPage() {
     }
   }, [demo]);
 
+  // ?demo=true generates a randomized demo trip once on arrival.
+  const demoStarted = useRef(false);
+  useEffect(() => {
+    if (!demo || demoStarted.current) return;
+    if (sessionStorage.getItem(RESULT_KEY)) return;
+    demoStarted.current = true;
+    runDemoTrip();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demo]);
+
+
+
   const persistDraft = (next: TripInput) => {
     setInput(next);
     try {
