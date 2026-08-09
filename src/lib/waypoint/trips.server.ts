@@ -44,7 +44,7 @@ export async function saveTripForUser(
       overview: plan.overview,
       budget_breakdown: plan.budget,
       trip_check: check,
-      fit_score: check.fitScore,
+      fit_score: check?.fitScore ?? null,
       agent_reasoning: brief,
       guide: result,
     })

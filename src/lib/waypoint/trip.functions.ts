@@ -1,7 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { fetchImagesForQueries } from "@/lib/waypoint/images.server";
-import { orchestrateAdaptation, orchestrateNewTrip } from "@/lib/waypoint/orchestrator.server";
+import {
+  orchestrateAdaptation,
+  orchestrateCheck,
+  orchestrateNewTrip,
+} from "@/lib/waypoint/orchestrator.server";
 import {
   deleteTripForUser,
   getTripForUser,
@@ -37,6 +41,12 @@ export const planTrip = createServerFn({ method: "POST" })
     return { input: data.input, brief, plan, check, generatedAt: new Date().toISOString() };
   });
 
+export const checkTrip = createServerFn({ method: "POST" })
+  .inputValidator(
+    (data: { input: TripInput; brief: PreferenceBrief; plan: TripPlan }) => data,
+  )
+  .handler(async ({ data }) => orchestrateCheck(data));
+
 export const adaptTrip = createServerFn({ method: "POST" })
   .inputValidator(
     (data: {
@@ -50,6 +60,7 @@ export const adaptTrip = createServerFn({ method: "POST" })
     const { brief, plan, check } = await orchestrateAdaptation(data);
     return { input: data.input, brief, plan, check, generatedAt: new Date().toISOString() };
   });
+
 
 export const saveTrip = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

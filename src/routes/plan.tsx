@@ -9,7 +9,8 @@ import { TripForm } from "@/components/waypoint/TripForm";
 import { AgentProgress } from "@/components/waypoint/AgentProgress";
 import { TripGuide } from "@/components/waypoint/TripGuide";
 import { useAuth } from "@/hooks/useAuth";
-import { adaptTrip, planTrip, saveTrip } from "@/lib/waypoint/trip.functions";
+import { adaptTrip, checkTrip, planTrip, saveTrip } from "@/lib/waypoint/trip.functions";
+import { PROMPT_KEY } from "@/components/wandor/Hero";
 import {
   demoTripInput,
   emptyTripInput,
@@ -27,13 +28,13 @@ export const Route = createFileRoute("/plan")({
 
   head: () => ({
     meta: [
-      { title: "Plan your trip — WayPoint" },
+      { title: "Plan your trip — Wandor" },
       {
         name: "description",
         content:
-          "Tell WayPoint your budget, dates, pace and accessibility needs and let the AI agents build your day-by-day travel guide.",
+          "Tell Wandor your budget, dates, pace and accessibility needs and let the AI agents build your day-by-day travel guide.",
       },
-      { property: "og:title", content: "Plan your trip — WayPoint" },
+      { property: "og:title", content: "Plan your trip — Wandor" },
       {
         property: "og:description",
         content: "A multi-step planner feeding an agentic AI travel planning workflow.",
@@ -56,10 +57,12 @@ function PlanPage() {
   const [error, setError] = useState<string | null>(null);
   const [adapting, setAdapting] = useState<AdaptationId | null>(null);
   const [saving, setSaving] = useState(false);
+  const [checking, setChecking] = useState(false);
 
   const runPlan = useServerFn(planTrip);
   const runAdapt = useServerFn(adaptTrip);
   const runSave = useServerFn(saveTrip);
+  const runCheck = useServerFn(checkTrip);
 
   // Restore any in-progress work (form data is never lost, guest results survive sign-in).
   useEffect(() => {
@@ -73,7 +76,15 @@ function PlanPage() {
         return;
       }
       const draft = sessionStorage.getItem(DRAFT_KEY);
-      if (draft && !demo) setInput(JSON.parse(draft) as TripInput);
+      const base = draft && !demo ? (JSON.parse(draft) as TripInput) : null;
+      const prompt = sessionStorage.getItem(PROMPT_KEY);
+      if (prompt) sessionStorage.removeItem(PROMPT_KEY);
+      if (base || prompt) {
+        setInput((current) => ({
+          ...(base ?? current),
+          ...(prompt ? { freeText: prompt } : {}),
+        }));
+      }
     } catch {
       /* ignore corrupt storage */
     }
@@ -98,6 +109,21 @@ function PlanPage() {
     }
   };
 
+  /** Runs the review pass after the guide is already on screen. */
+  async function audit(base: TripResult) {
+    setChecking(true);
+    try {
+      const check = await runCheck({
+        data: { input: base.input, brief: base.brief, plan: base.plan },
+      });
+      persistResult({ ...base, check });
+    } catch {
+      /* the guide is still usable without the review */
+    } finally {
+      setChecking(false);
+    }
+  }
+
   async function generate() {
     setError(null);
     setPhase("planning");
@@ -105,6 +131,7 @@ function PlanPage() {
       const next = await runPlan({ data: { input } });
       persistResult(next);
       setPhase("result");
+      void audit(next);
     } catch (e) {
       setError(e instanceof Error ? e.message : "The AI agents could not finish your plan.");
       setPhase("form");
@@ -120,7 +147,8 @@ function PlanPage() {
         data: { input: result.input, brief: result.brief, plan: result.plan, adaptation: id },
       });
       persistResult(next);
-      toast.success("Itinerary revised by the planning agents.");
+      toast.success("Itinerary updated.");
+      void audit(next);
     } catch (e) {
       const message = e instanceof Error ? e.message : "The revision could not be completed.";
       setError(message);
@@ -198,6 +226,7 @@ function PlanPage() {
             )}
             <TripGuide
               result={result}
+              checking={checking}
               onAdapt={adapt}
               adapting={adapting}
               onChangeDestination={() => {

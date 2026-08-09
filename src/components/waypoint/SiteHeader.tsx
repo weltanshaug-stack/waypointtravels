@@ -1,44 +1,50 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Button } from "@/components/ui/button";
+import { useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import logo from "@/assets/logo.png.asset.json";
 
 export function SiteHeader() {
-  const { user, loading, signOut } = useAuth();
+  const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  async function signOut() {
+    await queryClient.cancelQueries();
+    queryClient.clear();
+    await supabase.auth.signOut();
+    navigate({ to: "/", replace: true });
+  }
+
+  const linkClass =
+    "font-sans text-[15px] font-medium uppercase tracking-[0.04em] transition-opacity hover:opacity-55";
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border/70 bg-background/85 backdrop-blur-md">
+    <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur-md">
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4 sm:px-6">
-        <Link to="/" className="flex items-center gap-2">
-          <img src={logo.url} alt="WayPoint logo" className="h-9 w-9 object-contain" />
-          <span className="text-display text-lg font-semibold">WayPoint</span>
+        <Link to="/" className="font-logo text-[28px] leading-none">
+          wandor
         </Link>
 
-        <nav className="flex items-center gap-1 sm:gap-2">
-          <Button asChild variant="ghost" size="sm">
-            <Link to="/plan">Plan a trip</Link>
-          </Button>
+        <nav className="flex items-center gap-6">
+          <Link to="/plan" className={linkClass}>
+            Plan
+          </Link>
           {loading ? null : user ? (
             <>
-              <Button asChild variant="ghost" size="sm">
-                <Link to="/trips">My trips</Link>
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  await signOut();
-                  navigate({ to: "/" });
-                }}
-              >
+              <Link to="/trips" className={linkClass}>
+                My trips
+              </Link>
+              <button type="button" onClick={signOut} className={`${linkClass} cursor-pointer`}>
                 Sign out
-              </Button>
+              </button>
             </>
           ) : (
-            <Button asChild size="sm">
-              <Link to="/auth">Sign in</Link>
-            </Button>
+            <Link
+              to="/auth"
+              className="rounded-full bg-wandor-dark px-4 py-2.5 font-sans text-[14px] font-medium tracking-[0.04em] text-[#fafafa] uppercase transition-all hover:bg-[#333] active:scale-95"
+            >
+              Sign in
+            </Link>
           )}
         </nav>
       </div>
