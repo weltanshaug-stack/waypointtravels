@@ -70,8 +70,8 @@ export async function orchestrateAdaptation(args: {
   const plan = await runPlanner({
     input: args.input,
     brief: args.brief,
-    revisionDirective: directive,
-    ...(args.adaptation === "regenerate" ? {} : { previousPlan: args.plan }),
+    revisionDirective: `${directive} Then fill changeSummary with the 1-5 most meaningful differences from the previous plan, each tied to a preference the traveller actually stated.`,
+    previousPlan: args.plan,
   });
   return { brief: args.brief, plan, check: null, revised: true };
 }
