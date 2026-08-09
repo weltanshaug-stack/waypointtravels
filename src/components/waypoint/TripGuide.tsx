@@ -114,7 +114,8 @@ export function TripGuide({
     queryFn: () =>
       runFetchImages({ data: { queries: imageQueries, destination: plan.destination } }),
     staleTime: Infinity,
-    retry: false,
+    retry: 2,
+    retryDelay: 1200,
     enabled: imageQueries.length > 0,
   });
 
