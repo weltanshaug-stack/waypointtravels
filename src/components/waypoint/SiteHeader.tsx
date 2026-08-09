@@ -28,7 +28,15 @@ export function SiteHeader() {
         </Link>
 
         <nav className="flex items-center gap-6">
-          <Link to="/plan" className={linkClass}>
+          <Link
+            to="/plan"
+            search={{}}
+            className={linkClass}
+            onClick={() => {
+              // Already on /plan: reset back to a blank planner instead of doing nothing.
+              window.dispatchEvent(new CustomEvent("waypoint:new-plan"));
+            }}
+          >
             Plan
           </Link>
           {loading ? null : user ? (
