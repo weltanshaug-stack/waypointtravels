@@ -1,19 +1,24 @@
 /**
  * Itinerary photo lookup, powered by the Pexels photo API.
  *
- * Design goals:
- *   - ONE Pexels search per unique event query (highly specific, e.g.
- *     "Lake Tahoe kayaking" rather than "Lake Tahoe"), asking for multiple
- *     landscape results so we can choose rather than take the first hit.
- *   - Filter out selfies/portraits/screenshots/collages/text-heavy assets.
- *   - Rank by how well the photo actually depicts the event, then quality.
- *   - Assign photos globally by confidence so late days keep strong matches,
- *     and never reuse the same photo inside one itinerary.
- *   - Return the chosen photo id + ordered URL candidates + attribution, so the
- *     client can fall through sizes if one fails and credit Pexels correctly.
+ * For every event we work down a ladder that keeps the event's MEANING while
+ * broadening the search, instead of collapsing to a generic city photo:
  *
- * The API key is read inside this server-only module and never sent to the client.
+ *   1. exact place + city          "Trattoria Example Rome"
+ *   2. exact place + category      "Trattoria Example italian restaurant Rome"
+ *   3. category + city             "italian restaurant Rome"
+ *   4. relevant experience         "italian restaurant dining experience Rome"
+ *   5. destination photo           (true last resort only)
+ *
+ * Each tier is searched for all still-unresolved events at once, filtered for
+ * quality (no selfies/portraits/screenshots/collages/logos/maps/text), ranked by
+ * how well it depicts the event, then assigned globally by confidence so late
+ * days keep strong matches. A photo is never reused inside one itinerary.
+ *
+ * The API key is read inside this server-only module and never reaches the client.
  */
+
+import type { EventPhoto } from "@/lib/waypoint/types";
 
 const PEXELS_SEARCH = "https://api.pexels.com/v1/search";
 
@@ -54,6 +59,7 @@ const REJECT = [
   "clip art",
   "3d render",
   "mockup",
+  "blurry",
 ];
 
 const STOP_WORDS = new Set([
@@ -77,18 +83,123 @@ const STOP_WORDS = new Set([
   "near",
 ]);
 
-/** A chosen Pexels photo, stored on the itinerary event. */
-export type EventPhoto = {
-  /** Pexels photo id — stored with the event so the same photo can be reused. */
-  id: number;
-  /** Ordered URL candidates (large → medium) for the client to fall through. */
-  urls: string[];
-  alt: string;
-  photographer: string;
-  photographerUrl: string;
-  /** Pexels photo page — required attribution link. */
-  pexelsUrl: string;
-};
+/** Leading verbs/phrases that aren't part of the place name. */
+const LEAD_NOISE =
+  /^(dinner|lunch|breakfast|brunch|drinks|coffee|dine|eat|meal|snack|stay|sleep|check\s*in(to)?|check|visit|see|tour|explore|discover|wander|walk|stroll|browse|shop|relax|unwind|enjoy|experience|take|ride|board|join|attend|catch|sunset|sunrise|morning|afternoon|evening|optional|free\s*time)\b[\s:,-]*(at|in|the|a|an|around|through|to|on)?[\s:,-]*/i;
+
+/** Category keywords used for tiers 2–4 (place category / cuisine / activity). */
+const CATEGORIES = [
+  "italian restaurant",
+  "japanese restaurant",
+  "sushi restaurant",
+  "ramen shop",
+  "seafood restaurant",
+  "steakhouse",
+  "tapas bar",
+  "pizzeria",
+  "trattoria",
+  "osteria",
+  "bistro",
+  "brasserie",
+  "fine dining restaurant",
+  "street food market",
+  "food market",
+  "night market",
+  "market",
+  "restaurant",
+  "cafe",
+  "coffee shop",
+  "bakery",
+  "wine bar",
+  "cocktail bar",
+  "bar",
+  "brewery",
+  "winery",
+  "vineyard",
+  "hotel",
+  "boutique hotel",
+  "resort",
+  "hostel",
+  "ryokan",
+  "guesthouse",
+  "museum",
+  "art gallery",
+  "gallery",
+  "temple",
+  "shrine",
+  "church",
+  "cathedral",
+  "basilica",
+  "mosque",
+  "castle",
+  "palace",
+  "fortress",
+  "monument",
+  "park",
+  "national park",
+  "botanical garden",
+  "garden",
+  "beach",
+  "lake",
+  "river cruise",
+  "boat tour",
+  "kayaking",
+  "sailing",
+  "surfing",
+  "diving",
+  "snorkeling",
+  "hiking trail",
+  "hiking",
+  "mountain",
+  "waterfall",
+  "cave",
+  "hot spring",
+  "onsen",
+  "spa",
+  "cycling",
+  "bike tour",
+  "walking tour",
+  "food tour",
+  "cooking class",
+  "wine tasting",
+  "viewpoint",
+  "observation deck",
+  "old town",
+  "square",
+  "bridge",
+  "lighthouse",
+  "harbour",
+  "harbor",
+  "island",
+  "desert",
+  "zoo",
+  "aquarium",
+  "theatre",
+  "opera house",
+  "concert",
+  "stadium",
+  "train ride",
+  "ferry",
+  "shopping street",
+  "bookshop",
+];
+
+/** Words hinting at a category when no explicit keyword is present. */
+const CATEGORY_HINTS: [RegExp, string][] = [
+  [/\b(dinner|lunch|dine|dining|eat|meal|trattoria|osteria|tavern)\b/i, "restaurant"],
+  [/\b(hotel|stay|lodge|inn|riad|ryokan|accommodation)\b/i, "hotel"],
+  [/\b(trek|trekking|hike|hiking)\b/i, "hiking trail"],
+  [/\b(cruise|boat|sail)\b/i, "boat tour"],
+  [/\b(coffee|espresso|cafe)\b/i, "cafe"],
+  [/\b(museum|exhibit|exhibition)\b/i, "museum"],
+  [/\b(temple|shrine|pagoda)\b/i, "temple"],
+  [/\b(market|bazaar|souk)\b/i, "market"],
+  [/\b(spa|massage|thermal|onsen)\b/i, "spa"],
+  [/\b(wine|vineyard|winery)\b/i, "wine tasting"],
+];
+
+/** A chosen Pexels photo for one event. */
+export type { EventPhoto };
 
 type Photo = {
   id: number;
@@ -116,14 +227,14 @@ function haystackOf(p: Photo): string {
 /** Hard rejections: not a usable landscape photo of a place/activity. */
 function isDisqualified(p: Photo): boolean {
   if (!p.srcs.length) return true;
-  if (p.width < 1000) return true;
+  if (p.width < 1200) return true; // no low-resolution assets
   if (p.height > p.width) return true; // landscape only
   const hay = haystackOf(p);
   return REJECT.some((bad) => hay.includes(bad));
 }
 
 /**
- * Relevance rank. Subject words (the activity/venue itself) matter far more than
+ * Relevance rank. Subject words (the place/activity itself) matter far more than
  * the city name, so a generic city photo can never outrank an actual match.
  */
 function rank(p: Photo, words: string[], cityWords: string[] = []): number {
@@ -148,79 +259,33 @@ function matchesSubject(p: Photo, words: string[], cityWords: string[]): boolean
   return hits >= Math.min(2, subject.length) || hits / subject.length >= 0.5;
 }
 
-/** Broad experience categories used for relevant backup photos. */
-const CATEGORIES = [
-  "museum",
-  "art gallery",
-  "temple",
-  "shrine",
-  "church",
-  "cathedral",
-  "mosque",
-  "castle",
-  "palace",
-  "park",
-  "garden",
-  "beach",
-  "market",
-  "food market",
-  "restaurant",
-  "cafe",
-  "bakery",
-  "bar",
-  "winery",
-  "hike",
-  "trail",
-  "mountain",
-  "waterfall",
-  "lake",
-  "river",
-  "boat",
-  "cruise",
-  "kayak",
-  "bike",
-  "walking tour",
-  "viewpoint",
-  "old town",
-  "square",
-  "bridge",
-  "zoo",
-  "aquarium",
-  "spa",
-  "hot spring",
-  "shopping street",
-  "hotel",
-  "train",
-  "cooking class",
-  "concert",
-  "theatre",
-  "lighthouse",
-  "harbour",
-  "island",
-  "desert",
-  "vineyard",
-  "street food",
-];
+/** The place/activity name with leading verbs and the city stripped off. */
+function placeOf(query: string, city: string): string {
+  let out = query.trim();
+  for (let i = 0; i < 2; i += 1) out = out.replace(LEAD_NOISE, "").trim();
+  if (city) out = out.replace(new RegExp(`\\b${escapeRe(city)}\\b`, "gi"), "").trim();
+  return out.replace(/\s{2,}/g, " ").replace(/^[,\-–:]\s*/, "") || query;
+}
 
-/** Best-matching experience category for a query, if any. */
+function escapeRe(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Best-matching category/cuisine for the event, if any. */
 function categoryOf(query: string): string | undefined {
   const hay = query.toLowerCase();
   const hits = CATEGORIES.filter((cat) => hay.includes(cat));
   if (hits.length) return hits.sort((a, b) => b.length - a.length)[0];
-  const words = tokens(query);
-  if (words.some((w) => ["hiking", "trek", "trekking"].includes(w))) return "hike";
-  if (words.some((w) => ["dinner", "lunch", "brunch", "breakfast", "tasting"].includes(w)))
-    return "restaurant";
-  if (words.some((w) => ["stay", "check", "checkin", "accommodation"].includes(w))) return "hotel";
+  for (const [pattern, cat] of CATEGORY_HINTS) if (pattern.test(hay)) return cat;
   return undefined;
 }
 
 /** One Pexels search, retried once with a longer timeout on failure. */
 async function searchPexels(query: string, attempt = 0): Promise<Photo[]> {
   const key = process.env["PEXELS_API_KEY"];
-  if (!key) return [];
+  if (!key || !query.trim()) return [];
   const url = `${PEXELS_SEARCH}?${new URLSearchParams({
-    query,
+    query: query.trim().slice(0, 120),
     per_page: "15",
     orientation: "landscape",
     size: "large",
@@ -290,17 +355,16 @@ function toEventPhoto(p: Photo): EventPhoto {
 
 type Entry = {
   query: string;
-  words: string[];
-  /** Relevant, ranked candidates for this event (best first). */
-  options: Photo[];
-  /** Confidence of the best option — drives global assignment order. */
-  score: number;
+  /** Search phrases, most specific first. */
+  tiers: string[];
+  /** Words that must stay represented for a candidate to count. */
+  gateWords: string[][];
 };
 
 /**
  * Returns one chosen Pexels photo per event query, with attribution and ordered
- * URL candidates. Photos are unique within the itinerary and assigned globally
- * by confidence, so later days keep their strong matches.
+ * URL candidates. Photos are unique within a trip and stay semantically tied to
+ * the event: broader tiers keep the event's category, never a random city shot.
  */
 export async function fetchImagesForQueries(
   queries: string[],
@@ -314,12 +378,30 @@ export async function fetchImagesForQueries(
     ),
   ).slice(0, 45);
 
+  const city = destination.split(",")[0]?.trim() ?? "";
   const cityWords = tokens(destination);
 
-  const [results, destinationPhotos] = await Promise.all([
-    inBatches(unique, 8, (q) => searchPexels(q)),
-    destination ? searchPexels(`${destination} landmark travel`) : Promise.resolve([]),
-  ]);
+  const entries: Entry[] = unique.map((query) => {
+    const place = placeOf(query, city);
+    const category = categoryOf(query);
+    const withCity = (text: string) => (city ? `${text} ${city}` : text).trim();
+
+    const tiers = [
+      withCity(place), // 1. exact place + city
+      category ? withCity(`${place} ${category}`) : "", // 2. place + category + city
+      category ? withCity(category) : "", // 3. category + city
+      category ? withCity(`${category} experience`) : "", // 4. relevant experience
+    ].filter(Boolean);
+
+    const placeWords = tokens(place);
+    const categoryWords = category ? tokens(category) : [];
+    return {
+      query,
+      tiers,
+      // Tiers 1–2 must match the place itself; tiers 3–4 must match the category.
+      gateWords: tiers.map((_, i) => (i <= 1 ? placeWords : categoryWords)),
+    };
+  });
 
   const usedIds = new Set<number>();
   const map: Record<string, EventPhoto> = {};
@@ -329,88 +411,45 @@ export async function fetchImagesForQueries(
       .filter((p) => !isDisqualified(p) && matchesSubject(p, words, cityWords))
       .sort((a, b) => rank(b, words, cityWords) - rank(a, words, cityWords));
 
-  const scoreOf = (options: Photo[], words: string[]): number =>
-    options.length ? rank(options[0]!, words, cityWords) : -1;
+  const maxTiers = Math.max(0, ...entries.map((e) => e.tiers.length));
 
-  const entries: Entry[] = unique.map((query, i) => {
-    const words = tokens(query);
-    const options = relevantOf(results[i] ?? [], words);
-    return { query, words, options, score: scoreOf(options, words) };
-  });
+  for (let tier = 0; tier < maxTiers; tier += 1) {
+    const pending = entries.filter((e) => !map[e.query] && e.tiers[tier]);
+    if (!pending.length) continue;
 
-  // Second chance for events with no on-topic match: drop the city and search
-  // the activity words alone, which often finds a true photo of the experience.
-  const needRescue = entries.filter((e) => !e.options.length);
-  const rescueResults = await inBatches(needRescue, 8, (e) => {
-    const subject = e.words.filter((w) => !cityWords.includes(w));
-    return subject.length ? searchPexels(subject.join(" ")) : Promise.resolve([]);
-  });
-  needRescue.forEach((e, i) => {
-    e.options = relevantOf(rescueResults[i] ?? [], e.words);
-    e.score = scoreOf(e.options, e.words);
-  });
+    const pools = await inBatches(pending, 6, (e) => searchPexels(e.tiers[tier]!));
 
-  // Global assignment: the most confident matches claim their photo first, so an
-  // event on day 6 with an exact match isn't outbid by a weak day-1 match.
-  [...entries]
-    .sort((a, b) => b.score - a.score)
-    .forEach((e) => {
-      const fresh = e.options.find((p) => !usedIds.has(p.id));
+    // Score first, then assign globally by confidence, so an event with an exact
+    // match isn't outbid by a weaker one that happened to be processed earlier.
+    const scored = pending
+      .map((e, i) => {
+        const words = e.gateWords[tier]!;
+        const options = relevantOf(pools[i] ?? [], words);
+        return { entry: e, options, score: options.length ? rank(options[0]!, words, cityWords) : -1 };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    scored.forEach(({ entry, options }) => {
+      const fresh = options.find((p) => !usedIds.has(p.id));
       if (!fresh) return;
       usedIds.add(fresh.id);
-      map[e.query] = toEventPhoto(fresh);
+      map[entry.query] = toEventPhoto(fresh);
     });
+  }
 
-  const stillUnresolved = entries.filter((e) => !map[e.query]).map((e) => e.query);
-
-  // Third chance: one shared search per activity CATEGORY (museum, market, hike…),
-  // so the backup photo still depicts the kind of experience — anchored to the city.
-  const categories = Array.from(
-    new Set(stillUnresolved.map(categoryOf).filter((c): c is string => Boolean(c))),
-  ).slice(0, 8);
-
-  const categoryResults = await inBatches(categories, 8, (cat) =>
-    searchPexels(destination ? `${cat} ${destination}` : cat),
-  );
-  const categoryPools = new Map<string, Photo[]>();
-  categories.forEach((cat, i) => {
-    categoryPools.set(
-      cat,
-      (categoryResults[i] ?? [])
-        .filter((p) => !isDisqualified(p))
-        .sort(
-          (a, b) =>
-            rank(b, [cat, ...cityWords], cityWords) - rank(a, [cat, ...cityWords], cityWords),
-        ),
-    );
-  });
-
-  /** Claims the first unused photo from a pool, so no two events share it. */
-  const claimUnique = (pool: Photo[]): Photo | undefined => {
-    const free = pool.find((p) => !usedIds.has(p.id));
-    if (!free) return undefined;
-    usedIds.add(free.id);
-    return free;
-  };
-
-  const leftover: string[] = [];
-  stillUnresolved.forEach((q) => {
-    const cat = categoryOf(q);
-    const claimed = cat ? claimUnique(categoryPools.get(cat) ?? []) : undefined;
-    if (claimed) map[q] = toEventPhoto(claimed);
-    else leftover.push(q);
-  });
-
-  // Last resort: a distinct destination photo per remaining event — never the
-  // same backup twice. If nothing is left the client shows a bundled photo.
-  const destPool = destinationPhotos
-    .filter((p) => !isDisqualified(p))
-    .sort((a, b) => rank(b, cityWords) - rank(a, cityWords));
-
-  leftover.forEach((q) => {
-    const claimed = claimUnique(destPool);
-    if (claimed) map[q] = toEventPhoto(claimed);
-  });
+  // True last resort: a distinct destination photo per event still unresolved.
+  const leftover = entries.filter((e) => !map[e.query]);
+  if (leftover.length && destination) {
+    const destPool = (await searchPexels(`${destination} travel landmark`))
+      .filter((p) => !isDisqualified(p))
+      .sort((a, b) => rank(b, cityWords) - rank(a, cityWords));
+    leftover.forEach((e) => {
+      const free = destPool.find((p) => !usedIds.has(p.id));
+      if (!free) return;
+      usedIds.add(free.id);
+      map[e.query] = toEventPhoto(free);
+    });
+  }
 
   return map;
 }
