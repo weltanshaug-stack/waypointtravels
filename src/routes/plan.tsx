@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { AlertCircle, Bookmark, RotateCcw } from "lucide-react";
@@ -10,14 +10,14 @@ import { AgentProgress } from "@/components/waypoint/AgentProgress";
 import { TripGuide } from "@/components/waypoint/TripGuide";
 import { useAuth } from "@/hooks/useAuth";
 import { adaptTrip, checkTrip, planTrip, saveTrip } from "@/lib/waypoint/trip.functions";
-import { demoTripResult } from "@/lib/waypoint/demo-trip";
 import {
-  demoTripInput,
   emptyTripInput,
+  randomDemoTripInput,
   type AdaptationId,
   type TripInput,
   type TripResult,
 } from "@/lib/waypoint/types";
+
 
 /** Only accessibility answers persist between trips; everything else starts fresh. */
 const ACCESS_KEY = "waypoint:accessibility";
@@ -52,10 +52,10 @@ function PlanPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const [input, setInput] = useState<TripInput>(demo ? demoTripInput : emptyTripInput);
-  // ?demo=true lands straight on the finished guide — no planning wait.
-  const [phase, setPhase] = useState<Phase>(demo ? "result" : "form");
-  const [result, setResult] = useState<TripResult | null>(demo ? demoTripResult : null);
+  const [input, setInput] = useState<TripInput>(emptyTripInput);
+  const [phase, setPhase] = useState<Phase>("form");
+  const [result, setResult] = useState<TripResult | null>(null);
+
 
   const [error, setError] = useState<string | null>(null);
   const [adapting, setAdapting] = useState<AdaptationId | null>(null);
@@ -97,6 +97,18 @@ function PlanPage() {
     }
   }, [demo]);
 
+  // ?demo=true generates a randomized demo trip once on arrival.
+  const demoStarted = useRef(false);
+  useEffect(() => {
+    if (!demo || demoStarted.current) return;
+    if (sessionStorage.getItem(RESULT_KEY)) return;
+    demoStarted.current = true;
+    runDemoTrip();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demo]);
+
+
+
   const persistDraft = (next: TripInput) => {
     setInput(next);
     try {
@@ -137,11 +149,12 @@ function PlanPage() {
     }
   }
 
-  async function generate() {
+  async function generate(override?: TripInput) {
+    const target = override ?? input;
     setError(null);
     setPhase("planning");
     try {
-      const next = await runPlan({ data: { input } });
+      const next = await runPlan({ data: { input: target } });
       persistResult(next);
       setPhase("result");
       void audit(next);
@@ -150,6 +163,16 @@ function PlanPage() {
       setPhase("form");
     }
   }
+
+  /** Demo: a fresh 2-4 day trip in a random city with randomized preferences. */
+  function runDemoTrip() {
+    const demoInput = randomDemoTripInput();
+    setInput(demoInput);
+    toast.success(`Demo trip: ${demoInput.daysCount} days in ${demoInput.destination}.`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    void generate(demoInput);
+  }
+
 
   async function adapt(id: AdaptationId) {
     if (!result) return;
@@ -222,14 +245,8 @@ function PlanPage() {
               value={input}
               onChange={persistDraft}
               onSubmit={generate}
-              onDemo={() => {
-                // The demo skips the planning phase entirely.
-                setInput(demoTripInput);
-                persistResult(demoTripResult);
-                setPhase("result");
-                window.scrollTo({ top: 0, behavior: "smooth" });
-                toast.success("Demo guide loaded — 6 days in Tokyo.");
-              }}
+              onDemo={runDemoTrip}
+
             />
           </div>
         )}
