@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ActivityImage } from "@/components/waypoint/ActivityImage";
 import { fetchActivityImages } from "@/lib/waypoint/trip.functions";
 import {
   ADAPTATIONS,
