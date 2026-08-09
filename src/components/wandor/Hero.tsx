@@ -63,7 +63,7 @@ export function Hero() {
       <div className="relative z-[2] mx-auto max-w-[1360px]">
         <nav className="flex items-center justify-between px-6 pt-5 pb-4 md:px-20 md:pt-6">
           <Link to="/" className="font-logo text-[32px] leading-none md:text-[38px]">
-            wandor
+            WayPoint
           </Link>
 
           <div className="absolute left-1/2 flex -translate-x-1/2 gap-8 max-md:hidden">
@@ -82,7 +82,7 @@ export function Hero() {
             <button
               type="button"
               onClick={start}
-              className="cursor-pointer rounded-full border-none bg-wandor-dark px-5 py-3.5 font-sans text-[15px] font-medium tracking-[0.04em] text-[#fafafa] uppercase transition-all hover:bg-[#333] active:scale-95"
+              className="cursor-pointer rounded-full border-none bg-primary px-5 py-3.5 font-sans text-[15px] font-medium tracking-[0.04em] text-primary-foreground uppercase transition-all hover:opacity-90 active:scale-95"
             >
               Plan My Trip
             </button>
@@ -128,7 +128,7 @@ export function Hero() {
             <button
               type="button"
               onClick={start}
-              className="absolute right-[21px] bottom-[21px] flex h-14 w-[156px] cursor-pointer items-center justify-center rounded-[44px] border-none bg-black font-sans text-base font-medium tracking-[0.02em] text-[#fafafa] uppercase shadow-[0_0_2px_0_rgba(0,0,0,0.05)] transition-all hover:bg-[#333] active:scale-95"
+              className="absolute right-[21px] bottom-[21px] flex h-14 w-[156px] cursor-pointer items-center justify-center rounded-[44px] border-none bg-black font-sans text-base font-medium tracking-[0.02em] text-primary-foreground uppercase shadow-[0_0_2px_0_rgba(0,0,0,0.05)] transition-all hover:opacity-90 active:scale-95"
             >
               Plan My Trip
             </button>
