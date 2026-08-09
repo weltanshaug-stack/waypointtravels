@@ -228,11 +228,12 @@ export function TripGuide({
                       <div className="relative h-64 w-full shrink-0 sm:h-80">
                         <ActivityImage
                           cacheKey={key}
-                          candidates={images?.[key]}
+                          photo={item.photo ?? images?.[key]}
                           alt={`${item.title}, ${plan.destination}`}
                           priority={day.day === 1 && i === 0}
                           className="h-full w-full"
                         />
+
                         <span className="absolute top-3 left-3 rounded-full bg-background/90 px-2.5 py-1 text-xs font-semibold tracking-wide uppercase">
                           {TIME_LABEL[item.timeOfDay]}
                         </span>
