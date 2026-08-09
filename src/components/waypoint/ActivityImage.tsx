@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ImageIcon } from "lucide-react";
 
 const CACHE_KEY = "waypoint:image-cache";
-const LOAD_TIMEOUT_MS = 8000;
+const LOAD_TIMEOUT_MS = 5000;
 
 /** Remembers which candidate URL actually loaded, per image key. */
 function readCache(): Record<string, string> {
