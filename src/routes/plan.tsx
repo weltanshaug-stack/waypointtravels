@@ -80,8 +80,12 @@ function PlanPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const [input, setInput] = useState<TripInput>(demo ? demoTripInput : emptyTripInput);
-  const [phase, setPhase] = useState<Phase>("form");
+  // A demo run picks a random destination and generates immediately.
+  const demoInput = useRef<TripInput | null>(demo ? randomDemoTripInput() : null);
+  const demoStarted = useRef(false);
+
+  const [input, setInput] = useState<TripInput>(demoInput.current ?? emptyTripInput);
+  const [phase, setPhase] = useState<Phase>(demo ? "planning" : "form");
   const [result, setResult] = useState<TripResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [adapting, setAdapting] = useState<AdaptationId | null>(null);
@@ -95,6 +99,7 @@ function PlanPage() {
 
   // Restore any in-progress work (form data is never lost, guest results survive sign-in).
   useEffect(() => {
+    if (demo) return;
     try {
       const savedResult = sessionStorage.getItem(RESULT_KEY);
       if (savedResult) {
@@ -105,14 +110,23 @@ function PlanPage() {
         return;
       }
       const draft = sessionStorage.getItem(DRAFT_KEY);
-      const base = draft && !demo ? (JSON.parse(draft) as TripInput) : null;
+      const base = draft ? (JSON.parse(draft) as TripInput) : null;
       const access = readSavedAccessibility();
       if (base) setInput({ ...base, ...(access ?? {}) });
-      else if (access && !demo) setInput((prev) => ({ ...prev, ...access }));
+      else if (access) setInput((prev) => ({ ...prev, ...access }));
     } catch {
       /* ignore corrupt storage */
     }
   }, [demo]);
+
+  // Kick off the randomized demo guide on arrival.
+  useEffect(() => {
+    if (!demo || demoStarted.current || !demoInput.current) return;
+    demoStarted.current = true;
+    void generate(demoInput.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demo]);
+
 
   const persistDraft = (next: TripInput) => {
     setInput(next);
