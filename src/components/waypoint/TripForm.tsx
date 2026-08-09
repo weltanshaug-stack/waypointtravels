@@ -322,13 +322,14 @@ export function TripForm({
                 <NumberField
                   min={0}
                   max={1_000_000}
-                  placeholder="2000"
+                  placeholder={`${recommendedBudget(value).toLocaleString("en-US")} (recommended for this trip)`}
                   value={value.budgetTotal}
                   onChange={(n) => {
                     setShowBudgetError(false);
                     set("budgetTotal", n);
                   }}
                 />
+
 
                 <Select value={value.currency} onValueChange={(v) => set("currency", v)}>
                   <SelectTrigger>
