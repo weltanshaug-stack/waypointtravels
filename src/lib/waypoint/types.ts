@@ -300,6 +300,30 @@ const MIN_PER_PERSON_PER_DAY: Record<string, number> = {
   INR: 3000,
 };
 
+/** Multiplier applied to the daily floor for each comfort level. */
+const CATEGORY_MULTIPLIER: Record<string, number> = {
+  Budget: 1.2,
+  Moderate: 2,
+  Comfortable: 3,
+  Luxury: 5,
+};
+
+/**
+ * A realistic suggested total for this trip — used as the budget placeholder so
+ * travellers start from a sensible number instead of guessing.
+ */
+export function recommendedTripBudget(input: TripInput): number {
+  const travellers = Math.max(1, (input.adults || 0) + (input.children || 0));
+  const days = tripDayCount(input);
+  const floor = MIN_PER_PERSON_PER_DAY[input.currency] ?? 60;
+  const multiplier = CATEGORY_MULTIPLIER[input.budgetCategory] ?? 2;
+  const raw = floor * multiplier * travellers * days;
+  // Round to something a human would type.
+  const step = raw >= 100_000 ? 10_000 : raw >= 10_000 ? 1_000 : raw >= 1_000 ? 100 : 50;
+  return Math.max(step, Math.round(raw / step) * step);
+}
+
+
 /**
  * Rejects budgets that could not cover the trip (e.g. $50 for 7 days).
  * Returns a human-readable error, or null when the budget is plausible.
