@@ -222,6 +222,19 @@ export type PreferenceBrief = {
   risks: string[];
 };
 
+/** A Pexels photo chosen for one itinerary event, stored on the event itself. */
+export type EventPhoto = {
+  /** Pexels photo id — unique per event within a trip. */
+  id: number;
+  /** Ordered URL candidates (large → medium) so the client can fall through. */
+  urls: string[];
+  alt: string;
+  photographer: string;
+  photographerUrl: string;
+  /** Pexels photo page — required attribution link. */
+  pexelsUrl: string;
+};
+
 export type ItineraryItem = {
   timeOfDay: "morning" | "afternoon" | "evening";
   title: string;
@@ -234,7 +247,10 @@ export type ItineraryItem = {
   accessibilityNote?: string;
   /** Short real-world search phrase used to illustrate the activity. */
   imageQuery?: string;
+  /** Resolved Pexels photo for this event (id + URL + attribution). */
+  photo?: EventPhoto;
 };
+
 
 export const ACTIVITY_LEVELS = ["Relaxed", "Moderate", "Active"] as const;
 export type ActivityLevel = (typeof ACTIVITY_LEVELS)[number];
