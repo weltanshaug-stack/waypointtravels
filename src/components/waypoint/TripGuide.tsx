@@ -3,12 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
   Accessibility,
+  ArrowRight,
   Check,
   Clock,
   Coffee,
   Flame,
   Footprints,
   Loader2,
+  Sparkles,
   TriangleAlert,
   Wallet,
 } from "lucide-react";
@@ -158,6 +160,8 @@ export function TripGuide({
       ? `${input.startDate} → ${input.endDate}`
       : `${plan.days.length} days · flexible`;
 
+  const changes = (plan.changeSummary ?? []).filter((c) => c.trim().length > 0);
+
   const problems = check?.checks.filter((c) => c.status !== "pass") ?? [];
   const pros = check?.pros?.length ? check.pros : [];
   // Fall back to the audit's own warnings when the model gave no explicit cons.
@@ -190,6 +194,27 @@ export function TripGuide({
           </dl>
         </div>
       </section>
+
+      {/* ---------- What changed in this revision ---------- */}
+      {changes.length > 0 && (
+        <section className="surface-card animate-rise border-l-4 border-primary p-6">
+          <h2 className="text-display flex items-center gap-2 text-lg font-semibold">
+            <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" /> What we changed
+          </h2>
+          <ul className="mt-3 space-y-2">
+            {changes.map((change, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm">
+                <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                <span>
+                  <RichText text={change} />
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+
 
       {/* ---------- Day by day (first thing after the itinerary header) ---------- */}
       <section aria-labelledby="schedule-heading" className="space-y-12">
@@ -249,17 +274,21 @@ export function TripGuide({
                 {items.map((item, i) => {
                   const image = assignedImages[itemKey(day.day, item)];
                   return (
-                    <li key={i} className="surface-card flex flex-col overflow-hidden">
-                      <div className="relative h-64 w-full shrink-0 bg-secondary sm:h-80">
+                    <li key={i} className="surface-card group flex flex-col overflow-hidden">
+                      <div className="relative h-64 w-full shrink-0 overflow-hidden bg-secondary sm:h-80">
                         {image && (
                           <img
                             src={image}
                             alt={`${item.title}, ${plan.destination}`}
                             loading="lazy"
-                            className="h-full w-full object-cover"
+                            className="h-full w-full object-cover object-center transition-transform duration-700 ease-out group-hover:scale-[1.04]"
                           />
                         )}
-                        <span className="absolute top-3 left-3 rounded-full bg-background/90 px-2.5 py-1 text-xs font-semibold tracking-wide uppercase">
+                        <div
+                          className="pointer-events-none absolute inset-0 bg-gradient-to-t from-foreground/25 via-transparent to-foreground/10"
+                          aria-hidden="true"
+                        />
+                        <span className="absolute top-3 left-3 rounded-full bg-background/90 px-2.5 py-1 text-xs font-semibold tracking-wide uppercase shadow-sm backdrop-blur">
                           {TIME_LABEL[item.timeOfDay]}
                         </span>
                       </div>

@@ -85,7 +85,8 @@ export const emptyTripInput: TripInput = {
   endDate: "",
   daysCount: 5,
   useDayCount: false,
-  budgetTotal: 2000,
+  // Left empty so the budget field shows its recommended-amount placeholder.
+  budgetTotal: 0,
   currency: "USD",
   budgetFlexibility: "Somewhat flexible",
   budgetCategory: "Moderate",
@@ -185,6 +186,8 @@ export type TripPlan = {
   days: ItineraryDay[];
   highlights: { title: string; reason: string }[];
   practicalNotes: string[];
+  /** Only set on revisions: short "Changed X to Y → why" bullets. */
+  changeSummary?: string[];
 };
 
 export type TripCheck = {

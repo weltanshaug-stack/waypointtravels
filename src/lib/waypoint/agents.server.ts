@@ -89,7 +89,7 @@ const PLAN_SHAPE = `{"title":string,"destination":string,"destinationRationale":
 "budget":{"accommodation":number,"food":number,"transportation":number,"activities":number,"miscellaneous":number,"total":number,"notes":string},
 "days":[{"day":number,"date":string,"theme":string,"notes":string,"restPeriods":string,"estimatedDayCost":number,"activityLevel":"Relaxed"|"Moderate"|"Active",
 "items":[{"timeOfDay":"morning"|"afternoon"|"evening","title":string,"description":string,"durationMinutes":number,"estimatedCost":number,"whyItFits":string,"transportNote":string,"travelTimeMinutes":number,"accessibilityNote":string,"imageQuery":string}]}],
-"highlights":[{"title":string,"reason":string}],"practicalNotes":[string]}`;
+"highlights":[{"title":string,"reason":string}],"practicalNotes":[string],"changeSummary":[string]}`;
 
 
 const PLANNER_SYSTEM = `You are the Planner Orchestration agent inside Waypoint. You combine four specialist passes before emitting output:
@@ -130,7 +130,9 @@ export async function runPlanner(args: {
     previousPlan
       ? `You are REVISING an existing plan. Preserve everything that already matched the traveller's priorities and change only what the directive requires.\nExisting plan:\n${JSON.stringify(previousPlan)}`
       : "",
-    revisionDirective ? `REVISION DIRECTIVE: ${revisionDirective}` : "",
+    revisionDirective
+      ? `REVISION DIRECTIVE: ${revisionDirective}\n\nCHANGE SUMMARY: fill changeSummary with 2-4 very short bullets naming what you actually changed and why, formatted exactly as "Old thing → New thing — reason" (e.g. "Ueno Park walk → Kyu Iwasaki-tei House tour — less walking"). Mention only real changes you made in this revision. Leave changeSummary empty ([]) when nothing changed.`
+      : `changeSummary must be an empty array ([]) — this is a first draft, not a revision.`,
     `Currency for all amounts: ${input.currency}.`,
   ]
     .filter(Boolean)
@@ -321,5 +323,6 @@ export function normalisePlan(plan: TripPlan, input: TripInput): TripPlan {
     days,
     highlights: (plan.highlights ?? []).filter((h) => h && h.title),
     practicalNotes: (plan.practicalNotes ?? []).filter(Boolean),
+    changeSummary: (plan.changeSummary ?? []).filter(Boolean).slice(0, 4),
   };
 }

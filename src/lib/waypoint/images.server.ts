@@ -96,12 +96,19 @@ function relevance(query: string, title: string, url: string): number {
 
 type OpenverseResult = { title?: string; url?: string };
 
-async function openverse(query: string, minHits: number): Promise<string[]> {
+async function openverseQuery(
+  query: string,
+  minHits: number,
+  pretty: boolean,
+): Promise<string[]> {
   const url = `${OPENVERSE}?${new URLSearchParams({
     q: query,
-    page_size: "12",
+    page_size: "16",
     mature: "false",
     license_type: "all",
+    // Aesthetics: prefer large, wide, photographic files — they crop well into
+    // the wide itinerary cards instead of looking pixelated or awkward.
+    ...(pretty ? { aspect_ratio: "wide", size: "large", extension: "jpg,jpeg,png" } : {}),
   }).toString()}`;
   try {
     const res = await fetch(url, {
@@ -119,6 +126,13 @@ async function openverse(query: string, minHits: number): Promise<string[]> {
   } catch {
     return [];
   }
+}
+
+/** Good-looking photos first; widen to any photo only if that finds nothing. */
+async function openverse(query: string, minHits: number): Promise<string[]> {
+  const pretty = await openverseQuery(query, minHits, true);
+  if (pretty.length > 0) return pretty;
+  return openverseQuery(query, minHits, false);
 }
 
 type WikiPage = { title?: string; thumbnail?: { source?: string } };
