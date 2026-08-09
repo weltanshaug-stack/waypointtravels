@@ -195,8 +195,8 @@ export function TripGuide({
         </div>
       </section>
 
-      {/* ---------- What changed in this revision ---------- */}
-      {changes.length > 0 && (
+      {/* ---------- Overview (first draft) / What changed (revision) ---------- */}
+      {changes.length > 0 ? (
         <section className="surface-card animate-rise border-l-4 border-primary p-6">
           <h2 className="text-display flex items-center gap-2 text-lg font-semibold">
             <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" /> What we changed
@@ -212,7 +212,19 @@ export function TripGuide({
             ))}
           </ul>
         </section>
+      ) : (
+        plan.overview?.trim() && (
+          <section className="surface-card animate-rise border-l-4 border-primary p-6">
+            <h2 className="text-display flex items-center gap-2 text-lg font-semibold">
+              <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" /> Short trip overview
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+              <RichText text={plan.overview} />
+            </p>
+          </section>
+        )
       )}
+
 
 
 
