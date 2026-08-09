@@ -191,6 +191,27 @@ export function TripGuide({
         </div>
       </section>
 
+      {/* ---------- What changed in this revision ---------- */}
+      {changes.length > 0 && (
+        <section className="surface-card animate-rise border-l-4 border-primary p-6">
+          <h2 className="text-display flex items-center gap-2 text-lg font-semibold">
+            <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" /> What we changed
+          </h2>
+          <ul className="mt-3 space-y-2">
+            {changes.map((change, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm">
+                <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                <span>
+                  <RichText text={change} />
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+
+
       {/* ---------- Day by day (first thing after the itinerary header) ---------- */}
       <section aria-labelledby="schedule-heading" className="space-y-12">
         <h2 id="schedule-heading" className="text-display text-2xl font-semibold">
