@@ -1,24 +1,29 @@
 /**
- * Free, key-less photography for itinerary stops.
+ * Strict itinerary image selection.
  *
- * Goal: every card shows a photo of the *actual activity or place*, not a
- * random shot of the city. We do that in two ways:
- *   1. Progressive query broadening that always preserves the activity words
- *      (exact place → place + photo → activity + destination).
- *   2. Relevance scoring — a candidate is only accepted when its title/URL
- *      shares meaningful words with the query, so we never fall back to an
- *      unrelated building, street or landscape from the same city.
+ * Every itinerary card must show a photo a traveller can recognise as the
+ * actual experience. We never take the first search hit. Instead:
  *
- * Primary source: Openverse (openly-licensed photo search).
- * Fallback: the Wikipedia article thumbnail for the place.
+ *   1. Candidates are gathered from Openverse (openly licensed photo search)
+ *      with the Wikipedia article thumbnail as a secondary source.
+ *   2. Every candidate is scored 0-100:
+ *        event relevance 50 | location 20 | quality 15 | appeal 10 | clean 5
+ *   3. Only candidates at or above the tier's threshold are displayed.
+ *   4. Searching walks a tier ladder (exact event -> same attraction ->
+ *      activity in destination -> activity anywhere -> destination) so we never
+ *      jump straight from "exact" to "generic city photo".
+ *
+ * Selfies, portraits, influencer shots, maps, logos, screenshots, collages,
+ * infographics, watermarked and low-resolution assets are rejected outright.
  */
 
 const OPENVERSE = "https://api.openverse.org/v1/images/";
 const WIKIPEDIA = "https://en.wikipedia.org/w/api.php";
 const UA = "Waypoint/1.0 (travel planning app)";
 
-/** Words that mean the asset is not a photo of the physical place. */
+/** Words that mean the asset is not a usable photo of the experience. */
 const REJECT = [
+  // not a photo of a place
   "map",
   "locator",
   "logo",
@@ -34,15 +39,56 @@ const REJECT = [
   "floorplan",
   "blueprint",
   "chart",
+  "graph",
+  "infographic",
   "icon",
   "banner",
   "wordmark",
   "signature",
-  "screenshot",
   "poster",
   "stamp",
-  "portrait of",
+  "sticker",
+  "ticket",
+  "brochure",
+  "advertisement",
+  "advert",
+  // screenshots / composites
+  "screenshot",
+  "screen shot",
+  "collage",
+  "montage",
   "comparison",
+  "before and after",
+  "side by side",
+  "panel of",
+  "watermark",
+  // selfies / portraits / influencer shots
+  "selfie",
+  "self-portrait",
+  "self portrait",
+  "portrait of",
+  "headshot",
+  "posing",
+  "poses",
+  "me at",
+  "myself",
+  "my trip",
+  "instagram",
+  "tiktok",
+  "influencer",
+  "model shoot",
+  "photoshoot",
+  "closeup of face",
+  "close-up of face",
+  // low quality markers
+  "blurry",
+  "blurred",
+  "pixelated",
+  "low resolution",
+  "lowres",
+  "thumbnail",
+  "test image",
+  "scan of",
 ];
 
 const STOP_WORDS = new Set([
@@ -58,20 +104,24 @@ const STOP_WORDS = new Set([
   "for",
   "with",
   "photo",
+  "photograph",
+  "picture",
   "view",
-  "exterior",
-  "building",
+  "visit",
+  "explore",
   "near",
   "de",
   "la",
   "el",
 ]);
 
-function looksLikePhoto(text: string, url: string): boolean {
-  const haystack = `${text} ${decodeURIComponent(url)}`.toLowerCase();
-  if (/\.(svg|gif)(\?|$)/.test(url.toLowerCase())) return false;
-  return !REJECT.some((bad) => haystack.includes(bad));
-}
+type Candidate = {
+  url: string;
+  title: string;
+  width?: number;
+  height?: number;
+  tags?: string;
+};
 
 function tokens(text: string): string[] {
   return text
@@ -81,25 +131,69 @@ function tokens(text: string): string[] {
     .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
 }
 
-/**
- * How well a candidate matches the query. Requires at least one shared
- * meaningful word; more overlap wins.
- */
-function relevance(query: string, title: string, url: string): number {
-  const wanted = tokens(query);
-  if (wanted.length === 0) return 0;
-  const haystack = `${title} ${decodeURIComponent(url)}`.toLowerCase();
-  let hits = 0;
-  for (const word of new Set(wanted)) if (haystack.includes(word)) hits += 1;
-  return hits;
+function haystackOf(c: Candidate): string {
+  let decoded = c.url;
+  try {
+    decoded = decodeURIComponent(c.url);
+  } catch {
+    /* keep raw url */
+  }
+  return `${c.title} ${c.tags ?? ""} ${decoded}`.toLowerCase();
 }
 
-type OpenverseResult = { title?: string; url?: string };
+/** Hard rejections that no score can rescue. */
+function isDisqualified(c: Candidate): boolean {
+  const url = c.url.toLowerCase();
+  if (/\.(svg|gif|tif|tiff)(\?|$)/.test(url)) return false || true;
+  const hay = haystackOf(c);
+  if (REJECT.some((bad) => hay.includes(bad))) return true;
+  // Reject genuinely small assets — they look bad in a large card.
+  if (c.width && c.width < 640) return true;
+  if (c.width && c.height && c.height / c.width > 1.6) return true; // extreme portrait
+  return false;
+}
 
-async function openverse(query: string, minHits: number): Promise<string | null> {
+/**
+ * Scores a candidate 0-100 against the event.
+ *   event relevance 50 · location 20 · quality 15 · appeal 10 · clean 5
+ */
+function scoreCandidate(
+  c: Candidate,
+  activity: string[],
+  city: string[],
+): number {
+  const hay = haystackOf(c);
+
+  if (activity.length === 0) return 0;
+  const matched = activity.filter((w) => hay.includes(w)).length;
+  if (matched === 0) return 0;
+  let score = (matched / activity.length) * 50;
+
+  // Location: full credit when the city is present, partial when no city was
+  // requested (an exact-activity photo shouldn't be punished for that).
+  if (city.length === 0) score += 20;
+  else if (city.some((w) => hay.includes(w))) score += 20;
+  else score += 10;
+
+  // Quality by pixel width.
+  const w = c.width ?? 0;
+  score += w >= 1600 ? 15 : w >= 1000 ? 11 : w >= 640 ? 6 : 8;
+
+  // Appeal: landscape framing reads best in a hero card.
+  const h = c.height ?? 0;
+  if (w && h) score += w > h * 1.15 ? 10 : w >= h ? 7 : 3;
+  else score += 6;
+
+  // Professionalism: survived the reject list.
+  score += 5;
+
+  return Math.round(score);
+}
+
+async function openverseCandidates(query: string): Promise<Candidate[]> {
   const url = `${OPENVERSE}?${new URLSearchParams({
     q: query,
-    page_size: "12",
+    page_size: "20",
     mature: "false",
     license_type: "all",
   }).toString()}`;
@@ -108,22 +202,31 @@ async function openverse(query: string, minHits: number): Promise<string | null>
       headers: { "User-Agent": UA, Accept: "application/json" },
       signal: AbortSignal.timeout(7000),
     });
-    if (!res.ok) return null;
-    const json = (await res.json()) as { results?: OpenverseResult[] };
-    const scored = (json.results ?? [])
-      .filter((r) => r.url && looksLikePhoto(r.title ?? "", r.url))
-      .map((r) => ({ url: r.url!, score: relevance(query, r.title ?? "", r.url!) }))
-      .filter((r) => r.score >= minHits)
-      .sort((a, b) => b.score - a.score);
-    return scored[0]?.url ?? null;
+    if (!res.ok) return [];
+    const json = (await res.json()) as {
+      results?: {
+        title?: string;
+        url?: string;
+        width?: number;
+        height?: number;
+        tags?: { name?: string }[];
+      }[];
+    };
+    return (json.results ?? [])
+      .filter((r) => r.url)
+      .map((r) => ({
+        url: r.url!,
+        title: r.title ?? "",
+        width: r.width,
+        height: r.height,
+        tags: (r.tags ?? []).map((t) => t.name ?? "").join(" "),
+      }));
   } catch {
-    return null;
+    return [];
   }
 }
 
-type WikiPage = { title?: string; thumbnail?: { source?: string } };
-
-async function wikipedia(query: string, minHits: number): Promise<string | null> {
+async function wikipediaCandidates(query: string): Promise<Candidate[]> {
   const url = `${WIKIPEDIA}?${new URLSearchParams({
     action: "query",
     generator: "search",
@@ -131,7 +234,7 @@ async function wikipedia(query: string, minHits: number): Promise<string | null>
     gsrlimit: "6",
     prop: "pageimages",
     piprop: "thumbnail",
-    pithumbsize: "1200",
+    pithumbsize: "1600",
     format: "json",
     origin: "*",
   }).toString()}`;
@@ -140,57 +243,104 @@ async function wikipedia(query: string, minHits: number): Promise<string | null>
       headers: { "User-Agent": UA },
       signal: AbortSignal.timeout(6000),
     });
-    if (!res.ok) return null;
-    const json = (await res.json()) as { query?: { pages?: Record<string, WikiPage> } };
-    const scored = Object.values(json.query?.pages ?? {})
-      .map((p) => ({ src: p.thumbnail?.source, title: p.title ?? "" }))
-      .filter((p): p is { src: string; title: string } => Boolean(p.src))
-      .filter((p) => looksLikePhoto(p.title, p.src))
-      .map((p) => ({ src: p.src, score: relevance(query, p.title, p.src) }))
-      .filter((p) => p.score >= minHits)
-      .sort((a, b) => b.score - a.score);
-    return scored[0]?.src ?? null;
+    if (!res.ok) return [];
+    const json = (await res.json()) as {
+      query?: {
+        pages?: Record<
+          string,
+          {
+            title?: string;
+            thumbnail?: { source?: string; width?: number; height?: number };
+          }
+        >;
+      };
+    };
+    return Object.values(json.query?.pages ?? {})
+      .filter((p) => p.thumbnail?.source)
+      .map((p) => ({
+        url: p.thumbnail!.source!,
+        title: p.title ?? "",
+        width: p.thumbnail?.width,
+        height: p.thumbnail?.height,
+      }));
   } catch {
-    return null;
+    return [];
   }
+}
+
+/** Best-scoring acceptable candidate for one search phrase. */
+async function bestFor(
+  phrase: string,
+  activity: string[],
+  city: string[],
+  threshold: number,
+): Promise<{ url: string; score: number } | null> {
+  const candidates = [
+    ...(await openverseCandidates(phrase)),
+    ...(await wikipediaCandidates(phrase)),
+  ].filter((c) => !isDisqualified(c));
+
+  let best: { url: string; score: number } | null = null;
+  for (const c of candidates) {
+    const score = scoreCandidate(c, activity, city);
+    if (score >= threshold && (!best || score > best.score)) {
+      best = { url: c.url, score };
+    }
+  }
+  return best;
 }
 
 /**
- * Query variants, strongest first. The activity words are preserved as the
- * query broadens so we never drop to "generic city photo" too early.
- * Query shape from the planner is "<activity/place> <city>".
+ * Splits "<activity words> <city>" (the shape the planner emits) into the
+ * activity tokens and the city tokens.
  */
-function variants(query: string): { q: string; minHits: number }[] {
+function split(query: string): { activity: string[]; city: string[]; core: string; cityText: string } {
   const words = query.trim().split(/\s+/).filter(Boolean);
-  const core = words.slice(0, Math.max(1, words.length - 1)).join(" ");
-  const list = [
-    { q: query, minHits: 2 },
-    { q: query, minHits: 1 },
-    { q: `${core} photograph`, minHits: 1 },
-    { q: core, minHits: 1 },
-  ];
-  // Deduplicate identical phrase+threshold pairs.
-  const seen = new Set<string>();
-  return list.filter((v) => {
-    const key = `${v.q}|${v.minHits}`;
-    if (!v.q || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  const cityText = words.length > 1 ? words[words.length - 1]! : "";
+  const core = (words.length > 1 ? words.slice(0, -1) : words).join(" ");
+  return {
+    activity: tokens(core),
+    city: tokens(cityText),
+    core,
+    cityText,
+  };
 }
 
-/** Resolves one search phrase to a photograph of the activity itself. */
-async function lookupOne(query: string): Promise<string | null> {
-  for (const { q, minHits } of variants(query)) {
-    const hit = (await openverse(q, minHits)) ?? (await wikipedia(q, minHits));
-    if (hit) return hit;
+/**
+ * Tier ladder for one event. Relevance always beats aesthetics: we only fall
+ * back to a destination photo when nothing activity-specific clears the bar.
+ */
+async function lookupOne(query: string, destination: string): Promise<string | null> {
+  const { activity, city, core, cityText } = split(query);
+  const destTokens = tokens(destination);
+
+  const tiers: { phrase: string; activity: string[]; city: string[]; threshold: number }[] = [
+    // Tier 1 — exact event in the exact location.
+    { phrase: query, activity, city, threshold: 80 },
+    // Tier 2 — same attraction/activity, any angle.
+    { phrase: `${core} ${cityText} photograph`.trim(), activity, city, threshold: 80 },
+    // Tier 3 — same activity somewhere in the destination.
+    { phrase: `${core} ${destination}`.trim(), activity, city: destTokens, threshold: 75 },
+    // Tier 4 — same activity elsewhere (still recognisably the activity).
+    { phrase: core, activity, city: [], threshold: 68 },
+  ];
+
+  const seen = new Set<string>();
+  for (const tier of tiers) {
+    if (!tier.phrase || seen.has(`${tier.phrase}|${tier.threshold}`)) continue;
+    seen.add(`${tier.phrase}|${tier.threshold}`);
+    const hit = await bestFor(tier.phrase, tier.activity, tier.city, tier.threshold);
+    if (hit) return hit.url;
   }
-  // Last resort: accept anything photographic for the original phrase.
-  return (await openverse(query, 0)) ?? (await wikipedia(query, 0));
+
+  // Tier 5 — destination image, absolute last resort.
+  const dest = await bestFor(`${destination} landscape`, destTokens, [], 55);
+  return dest?.url ?? null;
 }
 
 export async function fetchImagesForQueries(
   queries: string[],
+  destination = "",
 ): Promise<Record<string, string>> {
   const unique = Array.from(
     new Set(
@@ -200,7 +350,9 @@ export async function fetchImagesForQueries(
     ),
   ).slice(0, 45);
 
-  const results = await Promise.all(unique.map((q) => lookupOne(q)));
+  const results = await Promise.all(
+    unique.map((q) => lookupOne(q, destination || q)),
+  );
   const map: Record<string, string> = {};
   unique.forEach((q, i) => {
     const url = results[i];
