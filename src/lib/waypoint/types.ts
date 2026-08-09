@@ -186,6 +186,8 @@ export type TripPlan = {
   days: ItineraryDay[];
   highlights: { title: string; reason: string }[];
   practicalNotes: string[];
+  /** Only set on revisions: short "Changed X to Y → why" bullets. */
+  changeSummary?: string[];
 };
 
 export type TripCheck = {
