@@ -20,7 +20,6 @@ import {
 
 
 /** Only accessibility answers persist between trips; everything else starts fresh. */
-const ACCESS_KEY = "waypoint:accessibility";
 const RESULT_KEY = "waypoint:result";
 
 export const Route = createFileRoute("/plan")({
