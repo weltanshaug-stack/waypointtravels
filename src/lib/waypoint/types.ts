@@ -125,6 +125,78 @@ export const demoTripInput: TripInput = {
   transportation: ["Public transportation", "Taxi / rideshare"],
 };
 
+/* ---------- Randomized demo trip ---------- */
+
+const DEMO_DESTINATIONS = [
+  { destination: "Lisbon, Portugal", currency: "EUR" },
+  { destination: "Kyoto, Japan", currency: "JPY" },
+  { destination: "Mexico City, Mexico", currency: "USD" },
+  { destination: "Barcelona, Spain", currency: "EUR" },
+  { destination: "Copenhagen, Denmark", currency: "EUR" },
+  { destination: "Marrakech, Morocco", currency: "EUR" },
+  { destination: "Vancouver, Canada", currency: "CAD" },
+  { destination: "Edinburgh, Scotland", currency: "GBP" },
+  { destination: "Cape Town, South Africa", currency: "USD" },
+  { destination: "Sydney, Australia", currency: "AUD" },
+  { destination: "Istanbul, Türkiye", currency: "EUR" },
+  { destination: "Jaipur, India", currency: "INR" },
+  { destination: "Seoul, South Korea", currency: "USD" },
+  { destination: "Buenos Aires, Argentina", currency: "USD" },
+  { destination: "Reykjavík, Iceland", currency: "EUR" },
+  { destination: "Athens, Greece", currency: "EUR" },
+] as const;
+
+const DEMO_FREE_TEXT = [
+  "We love quiet cafés, local markets and late starts.",
+  "We want great food and a couple of standout viewpoints.",
+  "We like learning about the place — museums and old neighbourhoods.",
+  "We prefer avoiding crowds and long queues.",
+  "We enjoy being outdoors, but nothing too strenuous.",
+  "We're happy to splurge on one memorable meal.",
+];
+
+const pick = <T,>(list: readonly T[]): T =>
+  list[Math.floor(Math.random() * list.length)] as T;
+
+const pickSome = <T,>(list: readonly T[], count: number): T[] => {
+  const pool = [...list];
+  const out: T[] = [];
+  while (out.length < count && pool.length > 0) {
+    out.push(...pool.splice(Math.floor(Math.random() * pool.length), 1));
+  }
+  return out;
+};
+
+/** A fresh 2-4 day trip in a random city with randomized preferences. */
+export function randomDemoTripInput(): TripInput {
+  const place = pick(DEMO_DESTINATIONS);
+  const adults = pick([1, 2, 2, 3] as const);
+  const children = adults > 1 ? pick([0, 0, 1, 2] as const) : 0;
+  const needs = Math.random() < 0.4 ? pickSome(ACCESSIBILITY_NEEDS, 1) : [];
+
+  const base: TripInput = {
+    ...emptyTripInput,
+    destination: place.destination,
+    currency: place.currency,
+    useDayCount: true,
+    daysCount: pick([2, 3, 4] as const),
+    adults,
+    children,
+    childrenAges: children > 0 ? Array.from({ length: children }, () => 5 + Math.floor(Math.random() * 10)).join(", ") : "",
+    travelStyles: pickSome(TRAVEL_STYLES, 2 + Math.floor(Math.random() * 2)),
+    freeText: pick(DEMO_FREE_TEXT),
+    accessibilityNeeds: needs,
+    accessibilityNotes: needs.length > 0 ? "Please keep this in mind when choosing venues." : "",
+    pace: pick(PACE_OPTIONS),
+    budgetCategory: pick(BUDGET_CATEGORIES),
+    budgetFlexibility: pick(BUDGET_FLEXIBILITY),
+    accommodation: pickSome(["Hotel", "Vacation rental", "Resort", "Flexible"] as const, 1),
+    transportation: pickSome(TRANSPORT_OPTIONS, 2),
+  };
+  return { ...base, budgetTotal: recommendedBudget(base) };
+}
+
+
 /* ---------- Agent output shapes ---------- */
 
 export type PreferenceBrief = {
