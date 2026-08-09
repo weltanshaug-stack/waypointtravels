@@ -430,13 +430,13 @@ export function TripForm({
             </Section>
             <Section title="Anything else we should know?" hint="Written in your own words — the agents treat this as a hard signal.">
               <Textarea
-                rows={5}
+                rows={4}
                 placeholder={[
-                  "I love quiet places away from the crowds…",
-                  "I want to try as much local pasta as possible…",
-                  "I'd rather wake up late and take slow mornings…",
-                  "I want a mix of museums and time outdoors…",
+                  "I love quiet spaces and hate long walks…",
+                  "I love the sun — put us outdoors whenever possible…",
+                  "I love learning, so museums and food history are a yes…",
                 ].join("\n")}
+
                 value={value.freeText}
                 onChange={(e) => set("freeText", e.target.value)}
               />
