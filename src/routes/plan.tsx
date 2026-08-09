@@ -22,9 +22,9 @@ const DRAFT_KEY = "waypoint:draft";
 const RESULT_KEY = "waypoint:result";
 
 export const Route = createFileRoute("/plan")({
-  validateSearch: (search: Record<string, unknown>) => ({
-    demo: search["demo"] === true || search["demo"] === "true" ? true : undefined,
-  }),
+  validateSearch: (search: Record<string, unknown>): { demo?: boolean } =>
+    search["demo"] === true || search["demo"] === "true" ? { demo: true } : {},
+
   head: () => ({
     meta: [
       { title: "Plan your trip — WayPoint" },

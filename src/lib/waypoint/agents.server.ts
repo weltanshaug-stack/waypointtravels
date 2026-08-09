@@ -1,10 +1,12 @@
 import { runAgentStep } from "@/lib/ai-gateway.server";
 import type {
+  ActivityLevel,
   PreferenceBrief,
   TripCheck,
   TripInput,
   TripPlan,
 } from "@/lib/waypoint/types";
+
 import { tripDayCount } from "@/lib/waypoint/types";
 
 /**
@@ -85,9 +87,10 @@ weight is 0-1. Include 4-7 priorities. Constraints must be concrete and testable
 
 const PLAN_SHAPE = `{"title":string,"destination":string,"destinationRationale":string,"overview":string,"currency":string,
 "budget":{"accommodation":number,"food":number,"transportation":number,"activities":number,"miscellaneous":number,"total":number,"notes":string},
-"days":[{"day":number,"date":string,"theme":string,"notes":string,"restPeriods":string,"estimatedDayCost":number,
-"items":[{"timeOfDay":"morning"|"afternoon"|"evening","title":string,"description":string,"durationMinutes":number,"estimatedCost":number,"whyItFits":string,"transportNote":string,"travelTimeMinutes":number,"accessibilityNote":string}]}],
+"days":[{"day":number,"date":string,"theme":string,"notes":string,"restPeriods":string,"estimatedDayCost":number,"activityLevel":"Relaxed"|"Moderate"|"Active",
+"items":[{"timeOfDay":"morning"|"afternoon"|"evening","title":string,"description":string,"durationMinutes":number,"estimatedCost":number,"whyItFits":string,"transportNote":string,"travelTimeMinutes":number,"accessibilityNote":string,"imageQuery":string}]}],
 "highlights":[{"title":string,"reason":string}],"practicalNotes":[string]}`;
+
 
 const PLANNER_SYSTEM = `You are the Planner Orchestration agent inside WayPoint. You combine four specialist passes before emitting output:
 1. DESTINATION/ACTIVITY PLANNER — generate candidate destinations/activities, then rank them against the traveller's weighted priorities. Drop generic tourist-trap picks when the traveller dislikes crowds.
@@ -96,6 +99,9 @@ const PLANNER_SYSTEM = `You are the Planner Orchestration agent inside WayPoint.
 4. SCHEDULE OPTIMIZER — respect pace: Relaxed = max 2 activities/day, Balanced = 2-3, Packed = 3-4. Cluster geographically to minimise travel. Give realistic travelTimeMinutes between consecutive activities. Include arrival/departure realities on the first and last day, and explicit rest periods.
 
 Every item needs a specific whyItFits sentence that references the traveller's own stated preferences.
+Every item also needs an imageQuery: a short real-world search phrase (2-6 words) naming the actual place or landmark, e.g. "Senso-ji Temple Tokyo" or "Tsukiji Outer Market". Never a generic phrase like "local food".
+Every day needs estimatedDayCost (sum of that day's item costs plus that day's share of food/local transport) and activityLevel: "Relaxed" (mostly sitting, little walking), "Moderate" (normal sightseeing) or "Active" (long walking, hiking or physically demanding). Match activityLevel to the traveller's pace and accessibility constraints, and alternate Active days with Relaxed ones.
+
 ${SAFETY_RULES}
 Return JSON exactly shaped as:
 ${PLAN_SHAPE}`;
@@ -194,14 +200,8 @@ export function normalisePlan(plan: TripPlan, input: TripInput): TripPlan {
     const n = Number(v);
     return Number.isFinite(n) && n >= 0 ? Math.round(n) : 0;
   };
-  const days = (plan.days ?? []).map((day, index) => ({
-    day: Number(day.day) || index + 1,
-    date: day.date ?? "",
-    theme: day.theme ?? `Day ${index + 1}`,
-    notes: day.notes ?? "",
-    restPeriods: day.restPeriods ?? "",
-    estimatedDayCost: num(day.estimatedDayCost),
-    items: (day.items ?? [])
+  const days = (plan.days ?? []).map((day, index) => {
+    const items = (day.items ?? [])
       .map((item) => ({
         timeOfDay:
           item.timeOfDay === "afternoon" || item.timeOfDay === "evening"
@@ -215,9 +215,33 @@ export function normalisePlan(plan: TripPlan, input: TripInput): TripPlan {
         transportNote: item.transportNote ?? "",
         travelTimeMinutes: num(item.travelTimeMinutes),
         accessibilityNote: item.accessibilityNote ?? "",
+        imageQuery: (item.imageQuery ?? "").trim(),
       }))
-      .sort((a, b) => ORDER[a.timeOfDay] - ORDER[b.timeOfDay]),
-  }));
+      .sort((a, b) => ORDER[a.timeOfDay] - ORDER[b.timeOfDay]);
+
+    const itemsCost = items.reduce((sum, i) => sum + i.estimatedCost, 0);
+    const activeMinutes = items.reduce((sum, i) => sum + i.durationMinutes, 0);
+    const level: ActivityLevel =
+      day.activityLevel === "Relaxed" || day.activityLevel === "Active" || day.activityLevel === "Moderate"
+        ? day.activityLevel
+        : items.length >= 4 || activeMinutes > 420
+          ? "Active"
+          : items.length <= 2 && activeMinutes <= 240
+            ? "Relaxed"
+            : "Moderate";
+
+    return {
+      day: Number(day.day) || index + 1,
+      date: day.date ?? "",
+      theme: day.theme ?? `Day ${index + 1}`,
+      notes: day.notes ?? "",
+      restPeriods: day.restPeriods ?? "",
+      estimatedDayCost: num(day.estimatedDayCost) || itemsCost,
+      activityLevel: level,
+      items,
+    };
+  });
+
 
   const budget = plan.budget ?? ({} as TripPlan["budget"]);
   const parts = {
