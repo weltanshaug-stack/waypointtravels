@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { AlertCircle, Bookmark, RotateCcw } from "lucide-react";
@@ -11,12 +11,13 @@ import { TripGuide } from "@/components/waypoint/TripGuide";
 import { useAuth } from "@/hooks/useAuth";
 import { adaptTrip, checkTrip, planTrip, saveTrip } from "@/lib/waypoint/trip.functions";
 import {
-  demoTripInput,
   emptyTripInput,
+  randomDemoTripInput,
   type AdaptationId,
   type TripInput,
   type TripResult,
 } from "@/lib/waypoint/types";
+
 
 const DRAFT_KEY = "waypoint:draft";
 /** Accessibility needs are the only answers we remember between trips. */
