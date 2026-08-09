@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ItineraryImage } from "@/components/waypoint/ItineraryImage";
 import { fetchActivityImages } from "@/lib/waypoint/trip.functions";
 import {
   ADAPTATIONS,
@@ -108,12 +109,13 @@ export function TripGuide({
     [plan],
   );
   const runFetchImages = useServerFn(fetchActivityImages);
-  const { data: images } = useQuery({
+  const { data: images, isPending: imagesLoading } = useQuery({
     queryKey: ["activity-images", plan.destination, imageQueries],
     queryFn: () =>
       runFetchImages({ data: { queries: imageQueries, destination: plan.destination } }),
     staleTime: Infinity,
-    retry: false,
+    retry: 1,
+    gcTime: Infinity,
     enabled: imageQueries.length > 0,
   });
 
