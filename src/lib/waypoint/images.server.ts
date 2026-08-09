@@ -218,8 +218,11 @@ async function searchOpenverse(query: string, attempt = 0): Promise<Candidate[]>
       }));
 
   } catch {
-    return [];
+    // Timed-out or dropped request: one retry so a slow response doesn't
+    // silently cost this event its photo.
+    return attempt === 0 ? searchOpenverse(query, 1) : [];
   }
+
 }
 
 /** One Wikipedia request — used only for the shared destination fallback set. */
@@ -228,7 +231,7 @@ async function searchWikipedia(query: string): Promise<Candidate[]> {
     action: "query",
     generator: "search",
     gsrsearch: query,
-    gsrlimit: "8",
+    gsrlimit: "20",
     prop: "pageimages",
     piprop: "thumbnail",
     pithumbsize: "1600",
