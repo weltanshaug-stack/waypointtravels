@@ -91,6 +91,24 @@ function PlanPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [demo]);
 
+  // The header "Plan" link starts a fresh planner, even when we're already on /plan.
+  useEffect(() => {
+    const reset = () => {
+      try {
+        sessionStorage.removeItem(RESULT_KEY);
+      } catch {
+        /* ignore */
+      }
+      setResult(null);
+      setInput(emptyTripInput);
+      setError(null);
+      setPhase("form");
+      window.scrollTo({ top: 0 });
+    };
+    window.addEventListener("waypoint:new-plan", reset);
+    return () => window.removeEventListener("waypoint:new-plan", reset);
+  }, []);
+
   const persistDraft = (next: TripInput) => {
     setInput(next);
   };
