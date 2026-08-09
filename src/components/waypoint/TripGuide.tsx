@@ -287,23 +287,29 @@ export function TripGuide({
                   const image = assignedImages[itemKey(day.day, item)];
                   return (
                     <li key={i} className="surface-card group flex flex-col overflow-hidden">
-                      <div className="relative h-64 w-full shrink-0 overflow-hidden bg-secondary sm:h-80">
-                        {image && (
+                      {/* No accurate photo found → no image card at all. */}
+                      {image ? (
+                        <div className="relative h-64 w-full shrink-0 overflow-hidden bg-secondary sm:h-80">
                           <img
                             src={image}
                             alt={`${item.title}, ${plan.destination}`}
                             loading="lazy"
                             className="h-full w-full object-cover object-center transition-transform duration-700 ease-out group-hover:scale-[1.04]"
                           />
-                        )}
-                        <div
-                          className="pointer-events-none absolute inset-0 bg-gradient-to-t from-foreground/25 via-transparent to-foreground/10"
-                          aria-hidden="true"
-                        />
-                        <span className="absolute top-3 left-3 rounded-full bg-background/90 px-2.5 py-1 text-xs font-semibold tracking-wide uppercase shadow-sm backdrop-blur">
+                          <div
+                            className="pointer-events-none absolute inset-0 bg-gradient-to-t from-foreground/25 via-transparent to-foreground/10"
+                            aria-hidden="true"
+                          />
+                          <span className="absolute top-3 left-3 rounded-full bg-background/90 px-2.5 py-1 text-xs font-semibold tracking-wide uppercase shadow-sm backdrop-blur">
+                            {TIME_LABEL[item.timeOfDay]}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="mt-6 ml-6 w-fit rounded-full bg-accent px-2.5 py-1 text-xs font-semibold tracking-wide text-accent-foreground uppercase">
                           {TIME_LABEL[item.timeOfDay]}
                         </span>
-                      </div>
+                      )}
+
 
                       <div className="min-w-0 flex-1 p-6">
                         <h4 className="text-display text-xl font-semibold sm:text-2xl">{item.title}</h4>
