@@ -89,7 +89,7 @@ const PLAN_SHAPE = `{"title":string,"destination":string,"destinationRationale":
 "budget":{"accommodation":number,"food":number,"transportation":number,"activities":number,"miscellaneous":number,"total":number,"notes":string},
 "days":[{"day":number,"date":string,"theme":string,"notes":string,"restPeriods":string,"estimatedDayCost":number,"activityLevel":"Relaxed"|"Moderate"|"Active",
 "items":[{"timeOfDay":"morning"|"afternoon"|"evening","title":string,"description":string,"durationMinutes":number,"estimatedCost":number,"whyItFits":string,"transportNote":string,"travelTimeMinutes":number,"accessibilityNote":string,"imageQuery":string}]}],
-"highlights":[{"title":string,"reason":string}],"practicalNotes":[string],"changeSummary":[{"change":string,"why":string}]}`;
+"highlights":[{"title":string,"reason":string}],"practicalNotes":[string]}`;
 
 
 const PLANNER_SYSTEM = `You are the Planner Orchestration agent inside Waypoint. You combine four specialist passes before emitting output:
@@ -106,8 +106,6 @@ BOLDING: in every description, wrap each specific proper place name in double as
 Every item needs a specific whyItFits sentence that references the traveller's own stated preferences.
 Every item MUST have a non-empty imageQuery built as [exact activity or attraction] + [specific location] + [city], 3-6 words, so a photo search returns a picture of what the traveller is actually doing or seeing — e.g. "Senso-ji Temple Tokyo", "Arashiyama bamboo forest Kyoto", "hot air balloon Cappadocia", "Seine river cruise Paris". Never a bare city name, never a map, logo, flag, crest, diagram or vague phrase like "local food" or "Paris travel". For meals, name the restaurant plus city; for hotels, the hotel name plus city; for transfers, the actual station or street plus city.
 Every day needs estimatedDayCost (sum of that day's item costs plus that day's share of food/local transport) and activityLevel: "Relaxed" (mostly sitting, little walking), "Moderate" (normal sightseeing) or "Active" (long walking, hiking or physically demanding). Match activityLevel to the traveller's pace and accessibility constraints, and alternate Active days with Relaxed ones.
-
-CHANGE SUMMARY: set changeSummary to [] when you are building a brand-new plan. When you are REVISING an existing plan, compare old and new and return 1-5 bullets covering only the most meaningful changes, ordered by importance. Each entry: "change" = the specific change (max 12 words, no "I changed"), "why" = how it fits a preference the traveller actually stated (max 12 words). Never invent preferences the traveller did not give, never restate the itinerary, never write paragraphs or vague claims like "the plan is better now". If the traveller asked for a specific change, explain that change first.
 
 ${SAFETY_RULES}
 Return JSON exactly shaped as:
@@ -323,9 +321,5 @@ export function normalisePlan(plan: TripPlan, input: TripInput): TripPlan {
     days,
     highlights: (plan.highlights ?? []).filter((h) => h && h.title),
     practicalNotes: (plan.practicalNotes ?? []).filter(Boolean),
-    changeSummary: (plan.changeSummary ?? [])
-      .filter((c) => c && c.change)
-      .map((c) => ({ change: c.change, why: c.why ?? "" }))
-      .slice(0, 5),
   };
 }

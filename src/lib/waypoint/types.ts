@@ -85,7 +85,7 @@ export const emptyTripInput: TripInput = {
   endDate: "",
   daysCount: 5,
   useDayCount: false,
-  budgetTotal: 0,
+  budgetTotal: 2000,
   currency: "USD",
   budgetFlexibility: "Somewhat flexible",
   budgetCategory: "Moderate",
@@ -124,93 +124,6 @@ export const demoTripInput: TripInput = {
   transportation: ["Public transportation", "Taxi / rideshare"],
 };
 
-/**
- * Demo presets. "Try a demo trip" picks one at random and generates the guide
- * straight away, so every demo run shows a different destination.
- */
-export const DEMO_TRIPS: TripInput[] = [
-  demoTripInput,
-  {
-    ...emptyTripInput,
-    destination: "Lisbon, Portugal",
-    useDayCount: true,
-    daysCount: 4,
-    budgetTotal: 1800,
-    budgetCategory: "Moderate",
-    adults: 2,
-    travelStyles: ["Food", "Culture", "Nightlife"],
-    freeText: "We love seafood, live music and walkable neighbourhoods. Slow mornings, please.",
-    pace: "Relaxed",
-    accommodation: ["Hotel"],
-    transportation: ["Walking", "Public transportation"],
-  },
-  {
-    ...emptyTripInput,
-    destination: "Kyoto, Japan",
-    useDayCount: true,
-    daysCount: 5,
-    budgetTotal: 3200,
-    budgetCategory: "Comfortable",
-    adults: 2,
-    travelStyles: ["Culture", "Nature", "Photography"],
-    freeText: "Temples, gardens and quiet corners away from the biggest crowds.",
-    pace: "Balanced",
-    accommodation: ["Hotel"],
-    transportation: ["Public transportation", "Walking"],
-  },
-  {
-    ...emptyTripInput,
-    destination: "Barcelona, Spain",
-    useDayCount: true,
-    daysCount: 5,
-    budgetTotal: 2600,
-    budgetCategory: "Moderate",
-    adults: 2,
-    children: 2,
-    childrenAges: "7, 10",
-    travelStyles: ["Family-friendly", "Beaches", "Food"],
-    freeText: "Kid-friendly days with beach time and short museum visits.",
-    pace: "Relaxed",
-    accommodation: ["Vacation rental"],
-    transportation: ["Public transportation", "Walking"],
-  },
-  {
-    ...emptyTripInput,
-    destination: "Reykjavík, Iceland",
-    useDayCount: true,
-    daysCount: 4,
-    budgetTotal: 3400,
-    budgetCategory: "Comfortable",
-    adults: 2,
-    travelStyles: ["Nature", "Adventure", "Photography"],
-    freeText: "Waterfalls, hot springs and dramatic landscapes. Driving is fine.",
-    pace: "Balanced",
-    accommodation: ["Hotel"],
-    transportation: ["Rental car"],
-  },
-  {
-    ...emptyTripInput,
-    destination: "Mexico City, Mexico",
-    useDayCount: true,
-    daysCount: 5,
-    budgetTotal: 1900,
-    budgetCategory: "Moderate",
-    adults: 1,
-    travelStyles: ["Food", "Culture", "History"],
-    freeText: "Street food, markets and museums. I like busy, characterful neighbourhoods.",
-    pace: "Packed",
-    accommodation: ["Hotel"],
-    transportation: ["Walking", "Taxi / rideshare"],
-  },
-];
-
-/** A random demo trip, never the same one twice in a row when possible. */
-export function randomDemoTripInput(exclude?: string): TripInput {
-  const pool = DEMO_TRIPS.filter((t) => t.destination !== exclude);
-  const list = pool.length ? pool : DEMO_TRIPS;
-  return list[Math.floor(Math.random() * list.length)]!;
-}
-
 /* ---------- Agent output shapes ---------- */
 
 export type PreferenceBrief = {
@@ -220,19 +133,6 @@ export type PreferenceBrief = {
   accessibilityConstraints: string[];
   paceGuidance: string;
   risks: string[];
-};
-
-/** A Pexels photo chosen for one itinerary event, stored on the event itself. */
-export type EventPhoto = {
-  /** Pexels photo id — unique per event within a trip. */
-  id: number;
-  /** Ordered URL candidates (large → medium) so the client can fall through. */
-  urls: string[];
-  alt: string;
-  photographer: string;
-  photographerUrl: string;
-  /** Pexels photo page — required attribution link. */
-  pexelsUrl: string;
 };
 
 export type ItineraryItem = {
@@ -247,10 +147,7 @@ export type ItineraryItem = {
   accessibilityNote?: string;
   /** Short real-world search phrase used to illustrate the activity. */
   imageQuery?: string;
-  /** Resolved Pexels photo for this event (id + URL + attribution). */
-  photo?: EventPhoto;
 };
-
 
 export const ACTIVITY_LEVELS = ["Relaxed", "Moderate", "Active"] as const;
 export type ActivityLevel = (typeof ACTIVITY_LEVELS)[number];
@@ -288,8 +185,6 @@ export type TripPlan = {
   days: ItineraryDay[];
   highlights: { title: string; reason: string }[];
   practicalNotes: string[];
-  /** Present only on revised plans: what changed and why it fits the traveller. */
-  changeSummary?: { change: string; why: string }[];
 };
 
 export type TripCheck = {
@@ -402,30 +297,6 @@ const MIN_PER_PERSON_PER_DAY: Record<string, number> = {
   JPY: 9000,
   INR: 3000,
 };
-
-/** Multiplier applied to the daily floor for each comfort level. */
-const CATEGORY_MULTIPLIER: Record<string, number> = {
-  Budget: 1.2,
-  Moderate: 2,
-  Comfortable: 3,
-  Luxury: 5,
-};
-
-/**
- * A realistic suggested total for this trip — used as the budget placeholder so
- * travellers start from a sensible number instead of guessing.
- */
-export function recommendedTripBudget(input: TripInput): number {
-  const travellers = Math.max(1, (input.adults || 0) + (input.children || 0));
-  const days = tripDayCount(input);
-  const floor = MIN_PER_PERSON_PER_DAY[input.currency] ?? 60;
-  const multiplier = CATEGORY_MULTIPLIER[input.budgetCategory] ?? 2;
-  const raw = floor * multiplier * travellers * days;
-  // Round to something a human would type.
-  const step = raw >= 100_000 ? 10_000 : raw >= 10_000 ? 1_000 : raw >= 1_000 ? 100 : 50;
-  return Math.max(step, Math.round(raw / step) * step);
-}
-
 
 /**
  * Rejects budgets that could not cover the trip (e.g. $50 for 7 days).

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { AlertCircle, Bookmark, RotateCcw } from "lucide-react";
@@ -11,17 +11,14 @@ import { TripGuide } from "@/components/waypoint/TripGuide";
 import { useAuth } from "@/hooks/useAuth";
 import { adaptTrip, checkTrip, planTrip, saveTrip } from "@/lib/waypoint/trip.functions";
 import {
+  demoTripInput,
   emptyTripInput,
-  randomDemoTripInput,
   type AdaptationId,
   type TripInput,
   type TripResult,
 } from "@/lib/waypoint/types";
 
-
 const DRAFT_KEY = "waypoint:draft";
-/** Accessibility needs are the only answers we remember between trips. */
-const ACCESS_KEY = "waypoint:accessibility";
 const RESULT_KEY = "waypoint:result";
 
 export const Route = createFileRoute("/plan")({
@@ -48,45 +45,13 @@ export const Route = createFileRoute("/plan")({
 
 type Phase = "form" | "planning" | "result";
 
-/** Style/preference answers are per-trip and never carried into a new trip. */
-function withoutPreferences(base: TripInput): TripInput {
-  return {
-    ...base,
-    travelStyles: [],
-    freeText: "",
-    pace: emptyTripInput.pace,
-    budgetCategory: emptyTripInput.budgetCategory,
-    budgetFlexibility: emptyTripInput.budgetFlexibility,
-    accommodation: [...emptyTripInput.accommodation],
-    transportation: [...emptyTripInput.transportation],
-  };
-}
-
-function readSavedAccessibility(): Pick<TripInput, "accessibilityNeeds" | "accessibilityNotes"> | null {
-  try {
-    const raw = localStorage.getItem(ACCESS_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<TripInput>;
-    return {
-      accessibilityNeeds: Array.isArray(parsed.accessibilityNeeds) ? parsed.accessibilityNeeds : [],
-      accessibilityNotes: typeof parsed.accessibilityNotes === "string" ? parsed.accessibilityNotes : "",
-    };
-  } catch {
-    return null;
-  }
-}
-
 function PlanPage() {
   const { demo } = Route.useSearch();
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  // A demo run picks a random destination and generates immediately.
-  const demoInput = useRef<TripInput | null>(demo ? randomDemoTripInput() : null);
-  const demoStarted = useRef(false);
-
-  const [input, setInput] = useState<TripInput>(demoInput.current ?? emptyTripInput);
-  const [phase, setPhase] = useState<Phase>(demo ? "planning" : "form");
+  const [input, setInput] = useState<TripInput>(demo ? demoTripInput : emptyTripInput);
+  const [phase, setPhase] = useState<Phase>("form");
   const [result, setResult] = useState<TripResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [adapting, setAdapting] = useState<AdaptationId | null>(null);
@@ -100,7 +65,6 @@ function PlanPage() {
 
   // Restore any in-progress work (form data is never lost, guest results survive sign-in).
   useEffect(() => {
-    if (demo) return;
     try {
       const savedResult = sessionStorage.getItem(RESULT_KEY);
       if (savedResult) {
@@ -111,36 +75,17 @@ function PlanPage() {
         return;
       }
       const draft = sessionStorage.getItem(DRAFT_KEY);
-      const base = draft ? (JSON.parse(draft) as TripInput) : null;
-      const access = readSavedAccessibility();
-      if (base) setInput({ ...base, ...(access ?? {}) });
-      else if (access) setInput((prev) => ({ ...prev, ...access }));
+      const base = draft && !demo ? (JSON.parse(draft) as TripInput) : null;
+      if (base) setInput(base);
     } catch {
       /* ignore corrupt storage */
     }
   }, [demo]);
 
-  // Kick off the randomized demo guide on arrival.
-  useEffect(() => {
-    if (!demo || demoStarted.current || !demoInput.current) return;
-    demoStarted.current = true;
-    void generate(demoInput.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [demo]);
-
-
   const persistDraft = (next: TripInput) => {
     setInput(next);
     try {
       sessionStorage.setItem(DRAFT_KEY, JSON.stringify(next));
-      // Only accessibility needs persist beyond this trip.
-      localStorage.setItem(
-        ACCESS_KEY,
-        JSON.stringify({
-          accessibilityNeeds: next.accessibilityNeeds,
-          accessibilityNotes: next.accessibilityNotes,
-        }),
-      );
     } catch {
       /* ignore */
     }
@@ -171,13 +116,11 @@ function PlanPage() {
     }
   }
 
-  async function generate(override?: TripInput) {
-    const payload = override ?? input;
+  async function generate() {
     setError(null);
     setPhase("planning");
     try {
-      const next = await runPlan({ data: { input: payload } });
-
+      const next = await runPlan({ data: { input } });
       persistResult(next);
       setPhase("result");
       void audit(next);
@@ -257,14 +200,11 @@ function PlanPage() {
             <TripForm
               value={input}
               onChange={persistDraft}
-              onSubmit={() => generate()}
+              onSubmit={generate}
               onDemo={() => {
-                const pick = randomDemoTripInput(input.destination);
-                persistDraft(pick);
-                toast.success(`Demo trip — generating ${pick.destination}…`);
-                void generate(pick);
+                persistDraft(demoTripInput);
+                toast.success("Demo trip loaded — 6 days in Tokyo.");
               }}
-
             />
           </div>
         )}
@@ -297,14 +237,6 @@ function PlanPage() {
                     variant="outline"
                     onClick={() => {
                       persistResult(null);
-                      // Fresh trip: keep accessibility needs, drop style/preferences.
-                      persistDraft(
-                        withoutPreferences({
-                          ...emptyTripInput,
-                          accessibilityNeeds: input.accessibilityNeeds,
-                          accessibilityNotes: input.accessibilityNotes,
-                        }),
-                      );
                       setPhase("form");
                     }}
                   >

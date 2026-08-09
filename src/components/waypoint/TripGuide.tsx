@@ -9,13 +9,11 @@ import {
   Flame,
   Footprints,
   Loader2,
-  Sparkles,
   TriangleAlert,
   Wallet,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ActivityImage } from "@/components/waypoint/ActivityImage";
 import { fetchActivityImages } from "@/lib/waypoint/trip.functions";
 import {
   ADAPTATIONS,
@@ -99,11 +97,15 @@ export function TripGuide({
   const showAccessibility =
     input.accessibilityNeeds.length > 0 || Boolean(input.accessibilityNotes?.trim());
 
-  // Each stop gets its own uniquely-selected photo (no shared fallback image).
+  // Every stop needs a picture: activity query first, then a destination-wide fallback.
+  const fallbackQueries = [plan.destination, `${plan.destination} landmark`, `${plan.destination} skyline`];
   const imageQueries = useMemo(
     () =>
       Array.from(
-        new Set(plan.days.flatMap((d) => d.items.map((i) => imageKeyFor(i, plan.destination)))),
+        new Set([
+          ...plan.days.flatMap((d) => d.items.map((i) => imageKeyFor(i, plan.destination))),
+          ...fallbackQueries,
+        ]),
       ).slice(0, 45),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [plan],
@@ -111,13 +113,12 @@ export function TripGuide({
   const runFetchImages = useServerFn(fetchActivityImages);
   const { data: images } = useQuery({
     queryKey: ["activity-images", plan.destination, imageQueries],
-    queryFn: () =>
-      runFetchImages({ data: { queries: imageQueries, destination: plan.destination } }),
+    queryFn: () => runFetchImages({ data: { queries: imageQueries } }),
     staleTime: Infinity,
-    retry: 2,
-    retryDelay: 1200,
+    retry: false,
     enabled: imageQueries.length > 0,
   });
+  const fallbackImage = fallbackQueries.map((q) => images?.[q]).find(Boolean);
 
   const budgetRows = [
     { label: "Stay", value: plan.budget.accommodation },
@@ -222,23 +223,22 @@ export function TripGuide({
 
               <ol className="mt-5 flex flex-col gap-6">
                 {items.map((item, i) => {
-                  const key = imageKeyFor(item, plan.destination);
+                  const image = images?.[imageKeyFor(item, plan.destination)] ?? fallbackImage;
                   return (
                     <li key={i} className="surface-card flex flex-col overflow-hidden">
-                      <div className="relative h-64 w-full shrink-0 sm:h-80">
-                        <ActivityImage
-                          cacheKey={key}
-                          photo={item.photo ?? images?.[key]}
-                          alt={`${item.title}, ${plan.destination}`}
-                          priority={day.day === 1 && i === 0}
-                          className="h-full w-full"
-                        />
-
+                      <div className="relative h-64 w-full shrink-0 bg-secondary sm:h-80">
+                        {image && (
+                          <img
+                            src={image}
+                            alt={`${item.title}, ${plan.destination}`}
+                            loading="lazy"
+                            className="h-full w-full object-cover"
+                          />
+                        )}
                         <span className="absolute top-3 left-3 rounded-full bg-background/90 px-2.5 py-1 text-xs font-semibold tracking-wide uppercase">
                           {TIME_LABEL[item.timeOfDay]}
                         </span>
                       </div>
-
 
                       <div className="min-w-0 flex-1 p-6">
                         <h4 className="text-display text-xl font-semibold sm:text-2xl">{item.title}</h4>
@@ -272,28 +272,6 @@ export function TripGuide({
           );
         })}
       </section>
-
-      {/* ---------- What changed (only on revised plans) ---------- */}
-      {(plan.changeSummary?.length ?? 0) > 0 && (
-        <section className="surface-card border-primary/30 bg-accent/40 p-6">
-          <h2 className="text-display flex items-center gap-2 text-lg font-semibold">
-            <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" /> What changed
-          </h2>
-          <ul className="mt-4 space-y-2.5">
-            {plan.changeSummary!.map((c, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm sm:text-base">
-                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
-                <span>
-                  <RichText text={c.change} />
-                  {c.why && (
-                    <span className="text-muted-foreground"> → {c.why}</span>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
 
       {/* ---------- Budget ---------- */}
       <section className="surface-card p-6">
@@ -336,14 +314,7 @@ export function TripGuide({
                 disabled={!!adapting}
                 onClick={() => onAdapt(a.id)}
               >
-                {adapting === a.id ? (
-                  <>
-                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden="true" />
-                    Revising…
-                  </>
-                ) : (
-                  a.label
-                )}
+                {adapting === a.id ? "Revising…" : a.label}
               </Button>
             ))}
             {onChangeDestination && (

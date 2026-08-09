@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { fetchImagesForQueries, type EventPhoto } from "@/lib/waypoint/images.server";
+import { fetchImagesForQueries } from "@/lib/waypoint/images.server";
 import {
   orchestrateAdaptation,
   orchestrateCheck,
@@ -21,14 +21,12 @@ import type {
 } from "@/lib/waypoint/types";
 
 export const fetchActivityImages = createServerFn({ method: "POST" })
-  .inputValidator((data: { queries: string[]; destination?: string }) => ({
+  .inputValidator((data: { queries: string[] }) => ({
     queries: Array.isArray(data?.queries) ? data.queries.slice(0, 45) : [],
-    destination: typeof data?.destination === "string" ? data.destination.slice(0, 120) : "",
   }))
-  .handler(async ({ data }): Promise<Record<string, EventPhoto>> =>
-    fetchImagesForQueries(data.queries, data.destination),
+  .handler(async ({ data }): Promise<Record<string, string>> =>
+    fetchImagesForQueries(data.queries),
   );
-
 
 
 /**
