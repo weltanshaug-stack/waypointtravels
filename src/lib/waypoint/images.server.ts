@@ -177,12 +177,16 @@ async function wikipedia(query: string, minHits: number): Promise<string[]> {
 function variants(query: string): { q: string; minHits: number }[] {
   const words = query.trim().split(/\s+/).filter(Boolean);
   const core = words.slice(0, Math.max(1, words.length - 1)).join(" ");
+  const place = words.slice(-1).join(" ");
   const list = [
     { q: query, minHits: 2 },
     { q: query, minHits: 1 },
     { q: `${core} photograph`, minHits: 1 },
     { q: core, minHits: 1 },
-    // Deliberately no minHits: 0 pass — an irrelevant photo is worse than none.
+    // Last resorts: a loosely related photo is better than an empty card.
+    { q: query, minHits: 0 },
+    { q: core, minHits: 0 },
+    { q: `${place} travel photograph`, minHits: 0 },
   ];
   // Deduplicate identical phrase+threshold pairs.
   const seen = new Set<string>();
