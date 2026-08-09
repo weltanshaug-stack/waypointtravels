@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import fallbackCoast from "@/assets/fallback-travel-1.jpg";
 import fallbackValley from "@/assets/fallback-travel-2.jpg";
 import fallbackHero from "@/assets/hero.jpg";
+import type { EventPhoto } from "@/lib/waypoint/types";
 
 const CACHE_KEY = "waypoint:image-cache";
 const LOAD_TIMEOUT_MS = 6000;
@@ -35,36 +36,33 @@ function writeCache(key: string, url: string) {
 }
 
 /**
- * Renders the first candidate image that actually loads.
+ * Renders the first candidate size of a Pexels photo that actually loads.
  *
  * - shows a skeleton while loading
  * - falls through to the next candidate on error or timeout
  * - ends on a bundled travel photo, so the container is never blank/broken
  * - caches the winning URL so it isn't re-resolved on re-render
  * - retries are bounded by the candidate list — never endless
+ * - credits the photographer and links to Pexels, per their guidelines
  */
 export function ActivityImage({
   cacheKey,
-  candidates,
+  photo,
   alt,
   priority = false,
   className = "",
 }: {
   cacheKey: string;
-  candidates: string[] | undefined;
+  photo: EventPhoto | undefined;
   alt: string;
   /** True for the first visible images — loads eagerly instead of lazily. */
   priority?: boolean;
   className?: string;
 }) {
   const cached = typeof window !== "undefined" ? readCache()[cacheKey] : undefined;
-  const remote = candidates?.length ? candidates : [];
+  const remote = photo?.urls?.length ? photo.urls : [];
   const local = pickLocalFallback(cacheKey);
-  const ordered = [
-    ...(cached ? [cached] : []),
-    ...remote.filter((u) => u !== cached),
-    local,
-  ];
+  const ordered = [...(cached ? [cached] : []), ...remote.filter((u) => u !== cached), local];
 
   const [index, setIndex] = useState(0);
   const [loaded, setLoaded] = useState(false);
@@ -72,11 +70,11 @@ export function ActivityImage({
   const current = ordered[Math.min(index, ordered.length - 1)]!;
   const isLocal = current === local;
 
-  // Reset when the candidate set changes (e.g. after a plan revision).
+  // Reset when the photo changes (e.g. after a plan revision).
   useEffect(() => {
     setIndex(0);
     setLoaded(false);
-  }, [cacheKey, remote.length]);
+  }, [cacheKey, photo?.id, remote.length]);
 
   // Slow or hanging URL → move on to the next candidate (local photo can't hang).
   useEffect(() => {
@@ -92,7 +90,7 @@ export function ActivityImage({
       <img
         key={current}
         src={current}
-        alt={alt}
+        alt={photo?.alt || alt}
         loading={priority ? "eager" : "lazy"}
         decoding="async"
         onLoad={(e) => {
@@ -121,6 +119,29 @@ export function ActivityImage({
       {/* Loading skeleton keeps the container size stable. */}
       {!loaded && (
         <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-secondary via-muted to-secondary" />
+      )}
+
+      {/* Pexels attribution — required when a Pexels photo is displayed. */}
+      {loaded && !isLocal && photo && (
+        <span className="absolute right-2 bottom-2 rounded-full bg-background/80 px-2 py-0.5 text-[0.68rem] text-muted-foreground backdrop-blur-sm">
+          <a
+            href={photo.photographerUrl}
+            target="_blank"
+            rel="noopener noreferrer nofollow"
+            className="hover:text-foreground hover:underline"
+          >
+            {photo.photographer}
+          </a>{" "}
+          /{" "}
+          <a
+            href={photo.pexelsUrl}
+            target="_blank"
+            rel="noopener noreferrer nofollow"
+            className="hover:text-foreground hover:underline"
+          >
+            Pexels
+          </a>
+        </span>
       )}
     </div>
   );
