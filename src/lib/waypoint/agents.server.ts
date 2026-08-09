@@ -89,7 +89,7 @@ const PLAN_SHAPE = `{"title":string,"destination":string,"destinationRationale":
 "budget":{"accommodation":number,"food":number,"transportation":number,"activities":number,"miscellaneous":number,"total":number,"notes":string},
 "days":[{"day":number,"date":string,"theme":string,"notes":string,"restPeriods":string,"estimatedDayCost":number,"activityLevel":"Relaxed"|"Moderate"|"Active",
 "items":[{"timeOfDay":"morning"|"afternoon"|"evening","title":string,"description":string,"durationMinutes":number,"estimatedCost":number,"whyItFits":string,"transportNote":string,"travelTimeMinutes":number,"accessibilityNote":string,"imageQuery":string}]}],
-"highlights":[{"title":string,"reason":string}],"practicalNotes":[string]}`;
+"highlights":[{"title":string,"reason":string}],"practicalNotes":[string],"changeSummary":[string]}`;
 
 
 const PLANNER_SYSTEM = `You are the Planner Orchestration agent inside Waypoint. You combine four specialist passes before emitting output:
