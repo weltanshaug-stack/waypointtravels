@@ -10,6 +10,7 @@ import { AgentProgress } from "@/components/waypoint/AgentProgress";
 import { TripGuide } from "@/components/waypoint/TripGuide";
 import { useAuth } from "@/hooks/useAuth";
 import { adaptTrip, checkTrip, planTrip, saveTrip } from "@/lib/waypoint/trip.functions";
+import { demoTripResult } from "@/lib/waypoint/demo-trip";
 import {
   demoTripInput,
   emptyTripInput,
@@ -18,7 +19,8 @@ import {
   type TripResult,
 } from "@/lib/waypoint/types";
 
-const DRAFT_KEY = "waypoint:draft";
+/** Only accessibility answers persist between trips; everything else starts fresh. */
+const ACCESS_KEY = "waypoint:accessibility";
 const RESULT_KEY = "waypoint:result";
 
 export const Route = createFileRoute("/plan")({
@@ -63,7 +65,7 @@ function PlanPage() {
   const runSave = useServerFn(saveTrip);
   const runCheck = useServerFn(checkTrip);
 
-  // Restore any in-progress work (form data is never lost, guest results survive sign-in).
+  // Restore in-progress work. Only accessibility preferences carry between trips.
   useEffect(() => {
     try {
       const savedResult = sessionStorage.getItem(RESULT_KEY);
@@ -74,9 +76,20 @@ function PlanPage() {
         setPhase("result");
         return;
       }
-      const draft = sessionStorage.getItem(DRAFT_KEY);
-      const base = draft && !demo ? (JSON.parse(draft) as TripInput) : null;
-      if (base) setInput(base);
+      if (demo) return;
+      const saved = localStorage.getItem(ACCESS_KEY);
+      if (!saved) return;
+      const access = JSON.parse(saved) as {
+        accessibilityNeeds?: string[];
+        accessibilityNotes?: string;
+      };
+      setInput((prev) => ({
+        ...prev,
+        accessibilityNeeds: Array.isArray(access.accessibilityNeeds)
+          ? access.accessibilityNeeds
+          : prev.accessibilityNeeds,
+        accessibilityNotes: access.accessibilityNotes ?? prev.accessibilityNotes,
+      }));
     } catch {
       /* ignore corrupt storage */
     }
@@ -85,7 +98,13 @@ function PlanPage() {
   const persistDraft = (next: TripInput) => {
     setInput(next);
     try {
-      sessionStorage.setItem(DRAFT_KEY, JSON.stringify(next));
+      localStorage.setItem(
+        ACCESS_KEY,
+        JSON.stringify({
+          accessibilityNeeds: next.accessibilityNeeds,
+          accessibilityNotes: next.accessibilityNotes,
+        }),
+      );
     } catch {
       /* ignore */
     }
@@ -202,8 +221,12 @@ function PlanPage() {
               onChange={persistDraft}
               onSubmit={generate}
               onDemo={() => {
-                persistDraft(demoTripInput);
-                toast.success("Demo trip loaded — 6 days in Tokyo.");
+                // The demo skips the planning phase entirely.
+                setInput(demoTripInput);
+                persistResult(demoTripResult);
+                setPhase("result");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+                toast.success("Demo guide loaded — 6 days in Tokyo.");
               }}
             />
           </div>
