@@ -98,7 +98,6 @@ function TripsPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <h2 className="text-display truncate text-xl font-semibold">{trip.destination}</h2>
-                      <p className="truncate text-sm text-muted-foreground">{trip.title}</p>
                     </div>
                     {trip.fit_score != null && <Badge variant="secondary">Fit {trip.fit_score}/100</Badge>}
                   </div>
