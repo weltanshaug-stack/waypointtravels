@@ -91,7 +91,10 @@ export function ActivityImage({
             setLoaded(true);
             writeCache(cacheKey, current);
           }}
-          onError={() => setLoaded(false) || setIndex((i) => i + 1)}
+          onError={() => {
+            setLoaded(false);
+            setIndex((i) => i + 1);
+          }}
           className={`h-full w-full object-cover transition-opacity duration-500 ${
             loaded ? "opacity-100" : "opacity-0"
           }`}
