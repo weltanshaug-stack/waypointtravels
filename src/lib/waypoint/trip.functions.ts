@@ -25,7 +25,7 @@ export const fetchActivityImages = createServerFn({ method: "POST" })
     queries: Array.isArray(data?.queries) ? data.queries.slice(0, 45) : [],
     destination: typeof data?.destination === "string" ? data.destination.slice(0, 120) : "",
   }))
-  .handler(async ({ data }): Promise<Record<string, string>> =>
+  .handler(async ({ data }): Promise<Record<string, string[]>> =>
     fetchImagesForQueries(data.queries, data.destination),
   );
 
