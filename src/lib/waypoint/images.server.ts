@@ -181,20 +181,21 @@ function matchesSubject(c: Candidate, words: string[], cityWords: string[]): boo
 }
 
 
-/** One Openverse request. */
-async function searchOpenverse(query: string): Promise<Candidate[]> {
+/** One Openverse request, retried once with a longer timeout on failure. */
+async function searchOpenverse(query: string, attempt = 0): Promise<Candidate[]> {
   const url = `${OPENVERSE}?${new URLSearchParams({
     q: query,
-    page_size: "12",
+    page_size: "16",
     mature: "false",
     license_type: "all",
   }).toString()}`;
   try {
     const res = await fetch(url, {
       headers: { "User-Agent": UA, Accept: "application/json" },
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(attempt === 0 ? 6000 : 9000),
     });
-    if (!res.ok) return [];
+    if (!res.ok) return attempt === 0 ? searchOpenverse(query, 1) : [];
+
     const json = (await res.json()) as {
       results?: {
         title?: string;
@@ -217,8 +218,11 @@ async function searchOpenverse(query: string): Promise<Candidate[]> {
       }));
 
   } catch {
-    return [];
+    // Timed-out or dropped request: one retry so a slow response doesn't
+    // silently cost this event its photo.
+    return attempt === 0 ? searchOpenverse(query, 1) : [];
   }
+
 }
 
 /** One Wikipedia request — used only for the shared destination fallback set. */
@@ -227,7 +231,7 @@ async function searchWikipedia(query: string): Promise<Candidate[]> {
     action: "query",
     generator: "search",
     gsrsearch: query,
-    gsrlimit: "8",
+    gsrlimit: "20",
     prop: "pageimages",
     piprop: "thumbnail",
     pithumbsize: "1600",
@@ -329,11 +333,34 @@ function categoryOf(query: string): string | undefined {
 }
 
 
+/** Runs tasks in small concurrent batches so the free API isn't hammered. */
+async function inBatches<T, R>(
+  items: T[],
+  size: number,
+  task: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = [];
+  for (let i = 0; i < items.length; i += size) {
+    out.push(...(await Promise.all(items.slice(i, i + size).map(task))));
+  }
+  return out;
+}
+
+type Entry = {
+  query: string;
+  words: string[];
+  /** Relevant, ranked candidates for this event (best first). */
+  options: Candidate[];
+  /** Confidence of the best option — drives global assignment order. */
+  score: number;
+};
+
 /**
- * Returns up to 3 ordered candidate URLs per query (best first) so the client can
+ * Returns up to 4 ordered candidate URLs per query (best first) so the client can
  * fall through locally when one URL fails to load.
  *
- * Request budget: 1 request per unique query + 1 shared destination request.
+ * Photos are assigned globally by confidence, not in itinerary order, so later
+ * days keep their strong matches instead of losing them to earlier days.
  */
 export async function fetchImagesForQueries(
   queries: string[],
@@ -347,83 +374,96 @@ export async function fetchImagesForQueries(
     ),
   ).slice(0, 45);
 
-  const [results, destinationPhotos] = await Promise.all([
-    Promise.all(unique.map((q) => searchOpenverse(q))),
+  const cityWords = tokens(destination);
+
+  const [results, wikiPhotos, cityPhotos] = await Promise.all([
+    inBatches(unique, 10, (q) => searchOpenverse(q)),
     destination ? searchWikipedia(`${destination} landmark`) : Promise.resolve([]),
+    destination ? searchOpenverse(`${destination} city`) : Promise.resolve([]),
   ]);
 
-  const cityWords = tokens(destination);
-  const destPool = destinationPhotos
+  // Deep, deduped pool of destination photos for the very last resort.
+  const seenDest = new Set<string>();
+  const destPool = [...wikiPhotos, ...cityPhotos]
     .filter((c) => !isDisqualified(c))
+    .filter((c) => {
+      const id = identityOf(c.url);
+      if (seenDest.has(id)) return false;
+      seenDest.add(id);
+      return true;
+    })
     .sort((a, b) => rank(b, cityWords) - rank(a, cityWords));
 
   const usedIdentities = new Set<string>();
   const map: Record<string, string[]> = {};
   let destCursor = 0;
 
-  /** Best on-topic, not-yet-used photos for one query, from a candidate pool. */
-  const pick = (pool: Candidate[], words: string[]): Candidate[] => {
-    const relevant = pool
+  /** On-topic candidates for one query, best first. */
+  const relevantOf = (pool: Candidate[], words: string[]): Candidate[] =>
+    pool
       .filter((c) => !isDisqualified(c) && matchesSubject(c, words, cityWords))
       .sort((a, b) => rank(b, words, cityWords) - rank(a, words, cityWords));
-    const fresh = relevant.filter((c) => !usedIdentities.has(identityOf(c.url)));
-    return (fresh.length ? fresh : relevant).slice(0, 3);
-  };
 
-  const commit = (q: string, chosen: Candidate[]) => {
+  const scoreOf = (options: Candidate[], words: string[]): number =>
+    options.length ? rank(options[0]!, words, cityWords) : -1;
+
+  const entries: Entry[] = unique.map((query, i) => {
+    const words = tokens(query);
+    const options = relevantOf(results[i] ?? [], words);
+    return { query, words, options, score: scoreOf(options, words) };
+  });
+
+  // Second chance for EVERY event with no on-topic match: search the activity
+  // words alone (city dropped), which often finds a true photo of the experience.
+  const needRescue = entries.filter((e) => !e.options.length);
+  const rescueResults = await inBatches(needRescue, 8, (e) => {
+    const subject = e.words.filter((w) => !cityWords.includes(w));
+    return subject.length ? searchOpenverse(subject.join(" ")) : Promise.resolve([]);
+  });
+  needRescue.forEach((e, i) => {
+    e.options = relevantOf(rescueResults[i] ?? [], e.words);
+    e.score = scoreOf(e.options, e.words);
+  });
+
+  const commit = (query: string, chosen: Candidate[]) => {
     usedIdentities.add(identityOf(chosen[0]!.url));
-    map[q] = chosen
+    map[query] = chosen
       .flatMap(urlsOf)
       .filter((u, idx, arr) => arr.indexOf(u) === idx)
       .slice(0, 4);
   };
 
-  const unresolved: string[] = [];
-
-  unique.forEach((q, i) => {
-    const chosen = pick(results[i] ?? [], tokens(q));
-    if (chosen.length) commit(q, chosen);
-    else unresolved.push(q);
+  // Global assignment: most confident matches claim their photo first, so an
+  // event on day 6 with an exact match isn't outbid by a weak day-1 match.
+  const byConfidence = [...entries].sort((a, b) => b.score - a.score);
+  byConfidence.forEach((e) => {
+    if (!e.options.length) return;
+    const fresh = e.options.filter((c) => !usedIdentities.has(identityOf(c.url)));
+    // A relevant repeat beats a generic photo, so reuse only when nothing is free.
+    commit(e.query, (fresh.length ? fresh : e.options).slice(0, 3));
   });
 
-  // Second chance: search the activity words alone (city dropped), which often
-  // finds a true photo of the experience. Bounded so request count stays small.
-  const rescues = unresolved.slice(0, 12);
-  const rescueResults = await Promise.all(
-    rescues.map((q) => {
-      const subject = tokens(q).filter((w) => !cityWords.includes(w));
-      return subject.length ? searchOpenverse(subject.join(" ")) : Promise.resolve([]);
-    }),
-  );
-
-  const stillUnresolved: string[] = [...unresolved.slice(12)];
-  rescues.forEach((q, i) => {
-    const chosen = pick(rescueResults[i] ?? [], tokens(q));
-    if (chosen.length) commit(q, chosen);
-    else stillUnresolved.push(q);
-  });
+  const stillUnresolved = entries.filter((e) => !map[e.query]).map((e) => e.query);
 
   // Third chance: one shared search per activity CATEGORY (museum, market, hike…),
   // so the backup photo still depicts the kind of experience, not a random city shot.
-  const byCategory = new Map<string, string[]>();
+  const categorySet = new Set<string>();
   stillUnresolved.forEach((q) => {
     const cat = categoryOf(q);
-    if (!cat) return;
-    const list = byCategory.get(cat) ?? [];
-    list.push(q);
-    byCategory.set(cat, list);
+    if (cat) categorySet.add(cat);
   });
 
-  const categories = Array.from(byCategory.keys()).slice(0, 8);
-  const categoryResults = await Promise.all(
-    categories.map((cat) => searchOpenverse(destination ? `${cat} ${destination}` : cat)),
+  const categories = Array.from(categorySet).slice(0, 8);
+  const categoryResults = await inBatches(categories, 8, (cat) =>
+    searchOpenverse(destination ? `${cat} ${destination}` : cat),
   );
 
   const categoryPools = new Map<string, Candidate[]>();
   categories.forEach((cat, i) => {
+    const words = [cat, ...cityWords];
     const pool = (categoryResults[i] ?? [])
       .filter((c) => !isDisqualified(c))
-      .sort((a, b) => rank(b, [cat, ...cityWords], cityWords) - rank(a, [cat, ...cityWords], cityWords));
+      .sort((a, b) => rank(b, words, cityWords) - rank(a, words, cityWords));
     categoryPools.set(cat, pool);
   });
 
@@ -448,7 +488,7 @@ export async function fetchImagesForQueries(
   });
 
   // Last resort: a distinct destination photo per remaining event — never the
-  // same backup twice. If the pool runs dry the client shows a bundled photo.
+  // same backup twice while any unused photo is left.
   leftover.forEach((q) => {
     const claimed = claimUnique(destPool);
     if (claimed) {
@@ -465,4 +505,5 @@ export async function fetchImagesForQueries(
 
   return map;
 }
+
 
