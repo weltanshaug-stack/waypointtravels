@@ -273,9 +273,10 @@ export async function fetchImagesForQueries(
     destination ? searchWikipedia(`${destination} landmark`) : Promise.resolve([]),
   ]);
 
+  const cityWords = tokens(destination);
   const destPool = destinationPhotos
     .filter((c) => !isDisqualified(c))
-    .sort((a, b) => rank(b, tokens(destination)) - rank(a, tokens(destination)));
+    .sort((a, b) => rank(b, cityWords) - rank(a, cityWords));
 
   const usedIdentities = new Set<string>();
   const map: Record<string, string[]> = {};
@@ -283,19 +284,22 @@ export async function fetchImagesForQueries(
 
   unique.forEach((q, i) => {
     const words = tokens(q);
-    const pool = (results[i] ?? [])
-      .filter((c) => !isDisqualified(c))
-      .sort((a, b) => rank(b, words) - rank(a, words));
+    const clean = (results[i] ?? []).filter((c) => !isDisqualified(c));
+    // Only keep photos that actually depict the event, not just the city.
+    const relevant = clean
+      .filter((c) => matchesSubject(c, words, cityWords))
+      .sort((a, b) => rank(b, words, cityWords) - rank(a, words, cityWords));
 
     // Prefer photos not already used elsewhere in this itinerary.
-    const fresh = pool.filter((c) => !usedIdentities.has(identityOf(c.url)));
-    const chosen = (fresh.length ? fresh : pool).slice(0, 3);
+    const fresh = relevant.filter((c) => !usedIdentities.has(identityOf(c.url)));
+    const chosen = (fresh.length ? fresh : relevant).slice(0, 3);
 
     if (chosen.length) {
       usedIdentities.add(identityOf(chosen[0]!.url));
       map[q] = chosen.map((c) => c.url);
       return;
     }
+
 
     // Nothing usable for this event: reuse the shared destination photos.
     if (destPool.length) {
