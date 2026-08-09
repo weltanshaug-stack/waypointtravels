@@ -137,11 +137,12 @@ function PlanPage() {
     }
   }
 
-  async function generate() {
+  async function generate(override?: TripInput) {
+    const target = override ?? input;
     setError(null);
     setPhase("planning");
     try {
-      const next = await runPlan({ data: { input } });
+      const next = await runPlan({ data: { input: target } });
       persistResult(next);
       setPhase("result");
       void audit(next);
@@ -150,6 +151,16 @@ function PlanPage() {
       setPhase("form");
     }
   }
+
+  /** Demo: a fresh 2-4 day trip in a random city with randomized preferences. */
+  function runDemoTrip() {
+    const demoInput = randomDemoTripInput();
+    setInput(demoInput);
+    toast.success(`Demo trip: ${demoInput.daysCount} days in ${demoInput.destination}.`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    void generate(demoInput);
+  }
+
 
   async function adapt(id: AdaptationId) {
     if (!result) return;
