@@ -25,20 +25,21 @@ export function Hero() {
         alt="Turquoise coastal bay framed by green cliffs at golden hour"
         width={1920}
         height={1280}
-        className="absolute inset-0 z-0 h-full w-full object-cover"
+        className="absolute inset-0 z-0 h-full w-full object-cover brightness-[0.82] saturate-[1.05]"
       />
       <div
         className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-[560px]"
         style={{
-          background: "linear-gradient(180deg, rgba(253,248,238,0.96) 0%, rgba(253,248,238,0) 100%)",
+          background: "linear-gradient(180deg, rgba(253,248,238,0.72) 0%, rgba(253,248,238,0) 100%)",
         }}
       />
       <div
         className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-[420px]"
         style={{
-          background: "linear-gradient(0deg, rgba(253,248,238,0.9) 0%, rgba(253,248,238,0) 100%)",
+          background: "linear-gradient(0deg, rgba(253,248,238,0.62) 0%, rgba(253,248,238,0) 100%)",
         }}
       />
+
 
       <div className="relative z-[2] mx-auto flex min-h-svh max-w-[1360px] flex-col">
         <nav className="flex items-center justify-between px-6 pt-5 pb-4 md:px-20 md:pt-6">
