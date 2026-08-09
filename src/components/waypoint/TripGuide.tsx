@@ -256,7 +256,13 @@ export function TripGuide({
                       <div className="relative h-64 w-full shrink-0 sm:h-80">
                         <ActivityImage
                           cacheKey={key}
-                          candidates={images?.[key]}
+                          candidates={
+                            resolvedKeys.has(key)
+                              ? images[key]
+                              : settledKeys.has(key)
+                                ? []
+                                : undefined
+                          }
                           alt={`${item.title}, ${plan.destination}`}
                           priority={day.day === 1 && i === 0}
                           className="h-full w-full"
