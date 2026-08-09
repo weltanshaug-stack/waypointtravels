@@ -328,36 +328,73 @@ export async function fetchImagesForQueries(
     }),
   );
 
+  const stillUnresolved: string[] = [...unresolved.slice(12)];
   rescues.forEach((q, i) => {
     const chosen = pick(rescueResults[i] ?? [], tokens(q));
-    if (chosen.length) {
-      commit(q, chosen);
-      return;
-    }
-    // Truly nothing on topic: rotate through shared destination photos so the
-    // same picture isn't repeated on every unresolved card.
-    if (destPool.length) {
-      const start = destCursor % destPool.length;
-      destCursor += 1;
-      const rotated = [...destPool.slice(start), ...destPool.slice(0, start)].slice(0, 2);
-      map[q] = rotated
-        .flatMap(urlsOf)
-        .filter((u, idx, arr) => arr.indexOf(u) === idx)
-        .slice(0, 4);
-    }
+    if (chosen.length) commit(q, chosen);
+    else stillUnresolved.push(q);
   });
 
-  unresolved.slice(12).forEach((q) => {
-    if (!destPool.length) return;
-    const start = destCursor % destPool.length;
-    destCursor += 1;
-    const rotated = [...destPool.slice(start), ...destPool.slice(0, start)].slice(0, 2);
-    map[q] = rotated
-      .flatMap(urlsOf)
-      .filter((u, idx, arr) => arr.indexOf(u) === idx)
-      .slice(0, 4);
+  // Third chance: one shared search per activity CATEGORY (museum, market, hike…),
+  // so the backup photo still depicts the kind of experience, not a random city shot.
+  const byCategory = new Map<string, string[]>();
+  stillUnresolved.forEach((q) => {
+    const cat = categoryOf(q);
+    if (!cat) return;
+    const list = byCategory.get(cat) ?? [];
+    list.push(q);
+    byCategory.set(cat, list);
+  });
+
+  const categories = Array.from(byCategory.keys()).slice(0, 8);
+  const categoryResults = await Promise.all(
+    categories.map((cat) => searchOpenverse(destination ? `${cat} ${destination}` : cat)),
+  );
+
+  const categoryPools = new Map<string, Candidate[]>();
+  categories.forEach((cat, i) => {
+    const pool = (categoryResults[i] ?? [])
+      .filter((c) => !isDisqualified(c))
+      .sort((a, b) => rank(b, [cat, ...cityWords], cityWords) - rank(a, [cat, ...cityWords], cityWords));
+    categoryPools.set(cat, pool);
+  });
+
+  /** Claims the first not-yet-used photo from a pool, so no two events share it. */
+  const claimUnique = (pool: Candidate[]): Candidate | undefined => {
+    const free = pool.find((c) => !usedIdentities.has(identityOf(c.url)));
+    if (!free) return undefined;
+    usedIdentities.add(identityOf(free.url));
+    return free;
+  };
+
+  const leftover: string[] = [];
+  stillUnresolved.forEach((q) => {
+    const cat = categoryOf(q);
+    const pool = cat ? categoryPools.get(cat) : undefined;
+    const claimed = pool ? claimUnique(pool) : undefined;
+    if (claimed) {
+      map[q] = urlsOf(claimed).slice(0, 4);
+      return;
+    }
+    leftover.push(q);
+  });
+
+  // Last resort: a distinct destination photo per remaining event — never the
+  // same backup twice. If the pool runs dry the client shows a bundled photo.
+  leftover.forEach((q) => {
+    const claimed = claimUnique(destPool);
+    if (claimed) {
+      map[q] = urlsOf(claimed).slice(0, 4);
+      return;
+    }
+    // Pool exhausted: rotate so at least the repeats are spread out.
+    if (destPool.length) {
+      const c = destPool[destCursor % destPool.length]!;
+      destCursor += 1;
+      map[q] = urlsOf(c).slice(0, 4);
+    }
   });
 
   return map;
-
 }
+
