@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { fetchImagesForQueries } from "@/lib/waypoint/images.server";
 import { orchestrateAdaptation, orchestrateNewTrip } from "@/lib/waypoint/orchestrator.server";
 import {
   deleteTripForUser,
@@ -14,6 +15,15 @@ import type {
   TripPlan,
   TripResult,
 } from "@/lib/waypoint/types";
+
+export const fetchActivityImages = createServerFn({ method: "POST" })
+  .inputValidator((data: { queries: string[] }) => ({
+    queries: Array.isArray(data?.queries) ? data.queries.slice(0, 40) : [],
+  }))
+  .handler(async ({ data }): Promise<Record<string, string>> =>
+    fetchImagesForQueries(data.queries),
+  );
+
 
 /**
  * Thin RPC surface. All logic lives in the imported agent/orchestrator modules.

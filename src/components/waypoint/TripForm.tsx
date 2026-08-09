@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { AlertCircle } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,11 +21,13 @@ import {
   BUDGET_CATEGORIES,
   BUDGET_FLEXIBILITY,
   CURRENCIES,
+  MAX_TRIP_DAYS,
   PACE_OPTIONS,
   TRANSPORT_OPTIONS,
   TRAVEL_STYLES,
   type TripInput,
   tripDayCount,
+  validateTripDates,
 } from "@/lib/waypoint/types";
 
 const STEPS = [
@@ -34,6 +38,60 @@ const STEPS = [
   "Style",
   "Access & logistics",
 ] as const;
+
+const todayISO = () => new Date().toISOString().slice(0, 10);
+
+/**
+ * Numeric input that keeps its own text state so the displayed value is never
+ * a leading "0" the user has to delete — an empty field simply reads as 0.
+ */
+function NumberField({
+  value,
+  onChange,
+  min,
+  max,
+  placeholder,
+  className,
+}: {
+  value: number;
+  onChange: (next: number) => void;
+  min?: number;
+  max?: number;
+  placeholder?: string;
+  className?: string;
+}) {
+  const [text, setText] = useState(value ? String(value) : "");
+
+  useEffect(() => {
+    const parsed = text.trim() === "" ? 0 : Number(text);
+    if (parsed !== value) setText(value ? String(value) : "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  return (
+    <Input
+      type="text"
+      inputMode="numeric"
+      className={className}
+      placeholder={placeholder ?? "0"}
+      value={text}
+      onChange={(e) => {
+        const raw = e.target.value.replace(/[^0-9]/g, "").replace(/^0+(?=\d)/, "");
+        setText(raw);
+        onChange(raw === "" ? 0 : Number(raw));
+      }}
+      onBlur={() => {
+        if (text === "") return;
+        let n = Number(text);
+        if (typeof min === "number" && n < min) n = min;
+        if (typeof max === "number" && n > max) n = max;
+        setText(String(n));
+        onChange(n);
+      }}
+    />
+  );
+}
+
 
 function Pill({
   active,
@@ -83,6 +141,7 @@ export function TripForm({
   onDemo: () => void;
 }) {
   const [step, setStep] = useState(0);
+  const [showDateError, setShowDateError] = useState(false);
   const set = <K extends keyof TripInput>(key: K, v: TripInput[K]) =>
     onChange({ ...value, [key]: v });
   const toggle = (key: "travelStyles" | "accessibilityNeeds" | "accommodation" | "transportation", item: string) => {
@@ -90,14 +149,35 @@ export function TripForm({
     set(key, list.includes(item) ? list.filter((i) => i !== item) : [...list, item]);
   };
 
+  const dateError = validateTripDates(value);
+
   const canAdvance = () => {
     if (step === 0) return value.destinationFlexible ? true : value.destination.trim().length > 1;
-    if (step === 1) return value.useDayCount ? value.daysCount > 0 : !!value.startDate && !!value.endDate;
     if (step === 2) return value.budgetTotal > 0;
     return true;
   };
 
+  const blockedByDates = () => {
+    if (!dateError) return false;
+    setShowDateError(true);
+    setStep(1);
+    toast.error("Check your travel dates", { description: dateError });
+    return true;
+  };
+
+  const handleContinue = () => {
+    if (step === 1 && blockedByDates()) return;
+    setShowDateError(false);
+    setStep((s) => s + 1);
+  };
+
+  const handleSubmit = () => {
+    if (blockedByDates()) return;
+    onSubmit();
+  };
+
   const last = step === STEPS.length - 1;
+
 
   return (
     <div className="surface-card animate-rise overflow-hidden">
@@ -154,57 +234,85 @@ export function TripForm({
                   <Label>Start date</Label>
                   <Input
                     type="date"
+                    min={todayISO()}
                     value={value.startDate}
                     disabled={value.useDayCount}
-                    onChange={(e) => set("startDate", e.target.value)}
+                    aria-invalid={showDateError && !!dateError}
+                    onChange={(e) => {
+                      setShowDateError(false);
+                      set("startDate", e.target.value);
+                    }}
                   />
                 </div>
                 <div className="space-y-1.5">
                   <Label>End date</Label>
                   <Input
                     type="date"
+                    min={value.startDate || todayISO()}
                     value={value.endDate}
                     disabled={value.useDayCount}
-                    onChange={(e) => set("endDate", e.target.value)}
+                    aria-invalid={showDateError && !!dateError}
+                    onChange={(e) => {
+                      setShowDateError(false);
+                      set("endDate", e.target.value);
+                    }}
                   />
                 </div>
               </div>
+              {showDateError && dateError && (
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm"
+                >
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                  <span>{dateError}</span>
+                </div>
+              )}
               <label className="flex items-center gap-2 pt-1 text-sm">
                 <Checkbox
                   checked={value.useDayCount}
-                  onCheckedChange={(c) => set("useDayCount", c === true)}
+                  onCheckedChange={(c) => {
+                    setShowDateError(false);
+                    set("useDayCount", c === true);
+                  }}
                 />
                 I don't have dates yet — plan by number of days
               </label>
               {value.useDayCount && (
                 <div className="max-w-[180px] space-y-1.5 pt-2">
                   <Label>Number of days</Label>
-                  <Input
-                    type="number"
+                  <NumberField
                     min={1}
-                    max={21}
+                    max={MAX_TRIP_DAYS}
+                    placeholder="5"
                     value={value.daysCount}
-                    onChange={(e) => set("daysCount", Number(e.target.value))}
+                    onChange={(n) => {
+                      setShowDateError(false);
+                      set("daysCount", n);
+                    }}
                   />
                 </div>
               )}
               <p className="text-sm text-muted-foreground">
-                Planning for <strong>{tripDayCount(value)}</strong> days.
+                Planning for <strong>{tripDayCount(value)}</strong> days (up to {MAX_TRIP_DAYS}).
               </p>
             </Section>
           </>
         )}
 
+
         {step === 2 && (
           <>
             <Section title="Total budget" hint="Everything for the whole group, excluding flights unless you say otherwise.">
               <div className="grid gap-4 sm:grid-cols-[1fr_140px]">
-                <Input
-                  type="number"
+                <NumberField
                   min={0}
+                  max={1_000_000}
+                  placeholder="2000"
                   value={value.budgetTotal}
-                  onChange={(e) => set("budgetTotal", Number(e.target.value))}
+                  onChange={(n) => set("budgetTotal", n)}
                 />
+
                 <Select value={value.currency} onValueChange={(v) => set("currency", v)}>
                   <SelectTrigger>
                     <SelectValue />
@@ -246,22 +354,25 @@ export function TripForm({
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label>Adults</Label>
-                  <Input
-                    type="number"
+                  <NumberField
                     min={1}
+                    max={20}
+                    placeholder="2"
                     value={value.adults}
-                    onChange={(e) => set("adults", Number(e.target.value))}
+                    onChange={(n) => set("adults", n)}
                   />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Children</Label>
-                  <Input
-                    type="number"
+                  <NumberField
                     min={0}
+                    max={20}
+                    placeholder="0"
                     value={value.children}
-                    onChange={(e) => set("children", Number(e.target.value))}
+                    onChange={(n) => set("children", n)}
                   />
                 </div>
+
               </div>
               {value.children > 0 && (
                 <div className="space-y-1.5 pt-2">
@@ -373,14 +484,15 @@ export function TripForm({
           Back
         </Button>
         {last ? (
-          <Button type="button" size="lg" onClick={onSubmit}>
+          <Button type="button" size="lg" onClick={handleSubmit}>
             Build my trip
           </Button>
         ) : (
-          <Button type="button" size="lg" onClick={() => setStep((s) => s + 1)} disabled={!canAdvance()}>
+          <Button type="button" size="lg" onClick={handleContinue} disabled={!canAdvance()}>
             Continue
           </Button>
         )}
+
       </div>
     </div>
   );

@@ -145,7 +145,12 @@ export type ItineraryItem = {
   transportNote?: string;
   travelTimeMinutes?: number;
   accessibilityNote?: string;
+  /** Short real-world search phrase used to illustrate the activity. */
+  imageQuery?: string;
 };
+
+export const ACTIVITY_LEVELS = ["Relaxed", "Moderate", "Active"] as const;
+export type ActivityLevel = (typeof ACTIVITY_LEVELS)[number];
 
 export type ItineraryDay = {
   day: number;
@@ -154,8 +159,11 @@ export type ItineraryDay = {
   notes?: string;
   restPeriods?: string;
   estimatedDayCost: number;
+  /** How physically demanding the day is. */
+  activityLevel?: ActivityLevel;
   items: ItineraryItem[];
 };
+
 
 export type BudgetBreakdown = {
   accommodation: number;
@@ -211,15 +219,67 @@ export const ADAPTATIONS = [
 
 export type AdaptationId = (typeof ADAPTATIONS)[number]["id"];
 
+export const MAX_TRIP_DAYS = 21;
+
 export function tripDayCount(input: TripInput): number {
   if (!input.useDayCount && input.startDate && input.endDate) {
     const start = new Date(input.startDate).getTime();
     const end = new Date(input.endDate).getTime();
     const diff = Math.round((end - start) / 86_400_000) + 1;
-    if (Number.isFinite(diff) && diff > 0) return Math.min(diff, 21);
+    if (Number.isFinite(diff) && diff > 0) return Math.min(diff, MAX_TRIP_DAYS);
   }
-  return Math.max(1, Math.min(input.daysCount || 1, 21));
+  return Math.max(1, Math.min(input.daysCount || 1, MAX_TRIP_DAYS));
 }
+
+function parseISODate(value: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const parts = value.split("-").map(Number);
+  const [y, m, d] = [parts[0]!, parts[1]!, parts[2]!];
+  const date = new Date(y, m - 1, d);
+  if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) return null;
+  return date;
+}
+
+/**
+ * Validates the Dates step. Returns a human-readable error, or null when valid.
+ */
+export function validateTripDates(input: TripInput): string | null {
+  if (input.useDayCount) {
+    const n = Number(input.daysCount);
+    if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) {
+      return "Enter the number of days as a whole number of at least 1.";
+    }
+    if (n > MAX_TRIP_DAYS) return `We can plan up to ${MAX_TRIP_DAYS} days at a time.`;
+    return null;
+  }
+
+  if (!input.startDate && !input.endDate) {
+    return "Add a start and end date, or switch to planning by number of days.";
+  }
+  if (!input.startDate) return "Add a start date for your trip.";
+  if (!input.endDate) return "Add an end date for your trip.";
+
+  const start = parseISODate(input.startDate);
+  const end = parseISODate(input.endDate);
+  if (!start) return "That start date isn't a real date. Use the format YYYY-MM-DD.";
+  if (!end) return "That end date isn't a real date. Use the format YYYY-MM-DD.";
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (start.getTime() < today.getTime()) return "Your start date is in the past — pick today or later.";
+  if (start.getFullYear() > today.getFullYear() + 5) {
+    return "That start date is too far ahead — pick a date within the next 5 years.";
+  }
+  if (end.getTime() < start.getTime()) {
+    return "Your end date is before your start date. Swap them or pick a later end date.";
+  }
+  const days = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
+  if (days > MAX_TRIP_DAYS) {
+    return `That's ${days} days. We can plan up to ${MAX_TRIP_DAYS} days at a time.`;
+  }
+  return null;
+}
+
 
 export function formatMoney(amount: number, currency: string): string {
   try {

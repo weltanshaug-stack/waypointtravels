@@ -1,18 +1,57 @@
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import {
   AlertTriangle,
   Bus,
   Check,
   Clock,
+  Coffee,
+  Flame,
+  Footprints,
+  ImageIcon,
   Info,
+  MapPin,
   Sparkles,
   TriangleAlert,
   Wallet,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ADAPTATIONS, formatMoney, type AdaptationId, type TripResult } from "@/lib/waypoint/types";
+import { fetchActivityImages } from "@/lib/waypoint/trip.functions";
+import {
+  ADAPTATIONS,
+  formatMoney,
+  type ActivityLevel,
+  type AdaptationId,
+  type ItineraryItem,
+  type TripResult,
+} from "@/lib/waypoint/types";
 
 const TIME_LABEL = { morning: "Morning", afternoon: "Afternoon", evening: "Evening" } as const;
+
+const LEVEL_STYLE: Record<ActivityLevel, { className: string; icon: typeof Coffee; hint: string }> = {
+  Relaxed: {
+    className: "border-primary/30 bg-primary/10 text-foreground",
+    icon: Coffee,
+    hint: "Relaxed day — light walking, plenty of downtime",
+  },
+  Moderate: {
+    className: "border-border bg-secondary text-foreground",
+    icon: Footprints,
+    hint: "Moderate day — normal sightseeing pace",
+  },
+  Active: {
+    className: "border-warn/50 bg-warn/15 text-foreground",
+    icon: Flame,
+    hint: "Active day — lots of walking or physical activity",
+  },
+};
+
+function imageKeyFor(item: ItineraryItem, destination: string): string {
+  const q = (item.imageQuery ?? "").trim();
+  return (q || `${item.title} ${destination}`).slice(0, 120);
+}
 
 function EstimateNote({ children }: { children?: React.ReactNode }) {
   return (
@@ -33,6 +72,7 @@ function ScoreRing({ score }: { score: number }) {
   );
 }
 
+
 export function TripGuide({
   result,
   onAdapt,
@@ -48,6 +88,23 @@ export function TripGuide({
 }) {
   const { plan, check, input, brief } = result;
   const currency = plan.currency || input.currency;
+
+  const imageQueries = useMemo(
+    () =>
+      Array.from(
+        new Set(plan.days.flatMap((d) => d.items.map((i) => imageKeyFor(i, plan.destination)))),
+      ).slice(0, 40),
+    [plan],
+  );
+  const runFetchImages = useServerFn(fetchActivityImages);
+  const { data: images } = useQuery({
+    queryKey: ["activity-images", plan.destination, imageQueries],
+    queryFn: () => runFetchImages({ data: { queries: imageQueries } }),
+    staleTime: Infinity,
+    retry: false,
+    enabled: imageQueries.length > 0,
+  });
+
   const budgetRows = [
     { label: "Accommodation", value: plan.budget.accommodation },
     { label: "Food", value: plan.budget.food },
@@ -239,71 +296,151 @@ export function TripGuide({
         </section>
       )}
 
-      {/* Itinerary */}
+      {/* Day-by-day schedule */}
       <section className="space-y-5">
-        <h2 className="text-display text-2xl font-semibold">Itinerary</h2>
-        {plan.days.map((day) => (
-          <article key={day.day} className="surface-card overflow-hidden">
-            <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-secondary/40 px-6 py-4">
-              <div>
-                <p className="text-xs font-semibold tracking-widest text-primary uppercase">
-                  Day {day.day}
-                  {day.date ? ` · ${day.date}` : ""}
-                </p>
-                <h3 className="text-display mt-0.5 text-xl font-semibold">{day.theme}</h3>
-              </div>
-              <Badge variant="secondary">Est. {formatMoney(day.estimatedDayCost, currency)}</Badge>
-            </header>
-            <div className="divide-y divide-border">
-              {day.items.map((item, i) => (
-                <div key={i} className="grid gap-3 px-6 py-5 sm:grid-cols-[110px_1fr]">
-                  <p className="text-sm font-semibold tracking-wide text-primary uppercase">
-                    {TIME_LABEL[item.timeOfDay]}
-                  </p>
+        <div>
+          <h2 className="text-display text-2xl font-semibold">Day-by-day schedule</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Every day shows what you're doing, what it costs, how long it takes, and how demanding the day
+            is. All costs are for the whole group and are AI estimates.
+          </p>
+        </div>
+
+        {plan.days.map((day) => {
+          const level = LEVEL_STYLE[day.activityLevel ?? "Moderate"];
+          const LevelIcon = level.icon;
+          const dayTotal =
+            day.estimatedDayCost || day.items.reduce((sum, i) => sum + i.estimatedCost, 0);
+          const dayMinutes = day.items.reduce(
+            (sum, i) => sum + i.durationMinutes + (i.travelTimeMinutes ?? 0),
+            0,
+          );
+
+          return (
+            <article key={day.day} className="surface-card overflow-hidden">
+              <header className="border-b border-border bg-secondary/40 px-6 py-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <h4 className="font-semibold">{item.title}</h4>
-                      <span className="text-sm text-muted-foreground">
-                        Est. {formatMoney(item.estimatedCost, currency)}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-sm leading-relaxed text-foreground/90">{item.description}</p>
-                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                      <span className="inline-flex items-center gap-1">
-                        <Clock className="h-3 w-3" /> ~{Math.round(item.durationMinutes / 60 * 10) / 10}h
-                      </span>
-                      {item.transportNote ? (
-                        <span className="inline-flex items-center gap-1">
-                          <Bus className="h-3 w-3" /> {item.transportNote}
-                          {item.travelTimeMinutes ? ` (~${item.travelTimeMinutes} min)` : ""}
-                        </span>
-                      ) : null}
-                      <EstimateNote />
-                    </div>
-                    {item.whyItFits && (
-                      <p className="mt-3 rounded-lg bg-accent/50 px-3 py-2 text-sm">
-                        <strong>Why this fits you: </strong>
-                        {item.whyItFits}
-                      </p>
-                    )}
-                    {item.accessibilityNote && (
-                      <p className="mt-2 rounded-lg border border-border bg-secondary/50 px-3 py-2 text-sm text-muted-foreground">
-                        <strong>Accessibility: </strong>
-                        {item.accessibilityNote} — reported/estimated, confirm directly with the venue.
-                      </p>
-                    )}
+                    <p className="text-xs font-semibold tracking-widest text-primary uppercase">
+                      Day {day.day}
+                      {day.date ? ` · ${day.date}` : ""}
+                    </p>
+                    <h3 className="text-display mt-0.5 text-xl font-semibold">{day.theme}</h3>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${level.className}`}
+                      title={level.hint}
+                    >
+                      <LevelIcon className="h-3.5 w-3.5" />
+                      {day.activityLevel ?? "Moderate"} day
+                    </span>
+                    <Badge variant="secondary" className="gap-1">
+                      <Wallet className="h-3 w-3" />
+                      Day budget {formatMoney(dayTotal, currency)}
+                    </Badge>
+                    <Badge variant="outline" className="gap-1">
+                      <Clock className="h-3 w-3" />
+                      ~{Math.round((dayMinutes / 60) * 10) / 10}h planned
+                    </Badge>
                   </div>
                 </div>
-              ))}
-            </div>
-            {(day.notes || day.restPeriods) && (
-              <footer className="border-t border-border bg-secondary/30 px-6 py-3 text-sm text-muted-foreground">
-                {[day.notes, day.restPeriods].filter(Boolean).join(" • ")}
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {level.hint} · {day.items.length} activit{day.items.length === 1 ? "y" : "ies"}
+                </p>
+              </header>
+
+              <ol className="divide-y divide-border">
+                {day.items.map((item, i) => {
+                  const key = imageKeyFor(item, plan.destination);
+                  const image = images?.[key];
+                  return (
+                    <li key={i} className="px-6 py-5">
+                      <div className="grid gap-4 sm:grid-cols-[168px_1fr]">
+                        <div>
+                          <p className="mb-2 text-xs font-semibold tracking-widest text-primary uppercase">
+                            {TIME_LABEL[item.timeOfDay]}
+                          </p>
+                          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl border border-border bg-secondary">
+                            {image ? (
+                              <img
+                                src={image}
+                                alt={`${item.title} in ${plan.destination}`}
+                                loading="lazy"
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-muted-foreground">
+                                <ImageIcon className="h-5 w-5" />
+                                <span className="px-2 text-center text-[10px] leading-tight">
+                                  No photo available
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <h4 className="text-base font-semibold">{item.title}</h4>
+                            <span className="rounded-full bg-secondary px-3 py-1 text-sm font-medium">
+                              {item.estimatedCost > 0
+                                ? `Est. ${formatMoney(item.estimatedCost, currency)}`
+                                : "Free"}
+                            </span>
+                          </div>
+                          <p className="mt-1.5 text-sm leading-relaxed text-foreground/90">
+                            {item.description}
+                          </p>
+                          <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                            <span className="inline-flex items-center gap-1">
+                              <Clock className="h-3 w-3" /> ~
+                              {Math.round((item.durationMinutes / 60) * 10) / 10}h
+                            </span>
+                            {item.transportNote ? (
+                              <span className="inline-flex items-center gap-1">
+                                <Bus className="h-3 w-3" /> {item.transportNote}
+                                {item.travelTimeMinutes ? ` (~${item.travelTimeMinutes} min)` : ""}
+                              </span>
+                            ) : null}
+                            {item.imageQuery ? (
+                              <span className="inline-flex items-center gap-1">
+                                <MapPin className="h-3 w-3" /> {item.imageQuery}
+                              </span>
+                            ) : null}
+                            <EstimateNote />
+                          </div>
+                          {item.whyItFits && (
+                            <p className="mt-3 rounded-lg bg-accent/50 px-3 py-2 text-sm">
+                              <strong>Why this fits you: </strong>
+                              {item.whyItFits}
+                            </p>
+                          )}
+                          {item.accessibilityNote && (
+                            <p className="mt-2 rounded-lg border border-border bg-secondary/50 px-3 py-2 text-sm text-muted-foreground">
+                              <strong>Accessibility: </strong>
+                              {item.accessibilityNote} — reported/estimated, confirm directly with the
+                              venue.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+
+              <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-secondary/30 px-6 py-3 text-sm text-muted-foreground">
+                <span>{[day.notes, day.restPeriods].filter(Boolean).join(" • ")}</span>
+                <span className="font-medium text-foreground">
+                  Day {day.day} total · {formatMoney(dayTotal, currency)}
+                </span>
               </footer>
-            )}
-          </article>
-        ))}
+            </article>
+          );
+        })}
       </section>
+
 
       {/* Reasoning + notes */}
       <section className="grid gap-6 lg:grid-cols-2">
