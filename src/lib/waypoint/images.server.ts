@@ -118,9 +118,9 @@ const STOP_WORDS = new Set([
 type Candidate = {
   url: string;
   title: string;
-  width?: number;
-  height?: number;
-  tags?: string;
+  width?: number | undefined;
+  height?: number | undefined;
+  tags?: string | undefined;
 };
 
 function tokens(text: string): string[] {
@@ -144,7 +144,7 @@ function haystackOf(c: Candidate): string {
 /** Hard rejections that no score can rescue. */
 function isDisqualified(c: Candidate): boolean {
   const url = c.url.toLowerCase();
-  if (/\.(svg|gif|tif|tiff)(\?|$)/.test(url)) return false || true;
+  if (/\.(svg|gif|tif|tiff)(\?|$)/.test(url)) return true;
   const hay = haystackOf(c);
   if (REJECT.some((bad) => hay.includes(bad))) return true;
   // Reject genuinely small assets — they look bad in a large card.
