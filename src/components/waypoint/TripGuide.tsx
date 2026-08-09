@@ -196,7 +196,7 @@ export function TripGuide({
                   const image = images?.[imageKeyFor(item, plan.destination)] ?? fallbackImage;
                   return (
                     <li key={i} className="surface-card flex flex-col overflow-hidden">
-                      <div className="relative aspect-[16/9] w-full bg-secondary">
+                      <div className="relative h-44 w-full shrink-0 bg-secondary">
                         {image && (
                           <img
                             src={image}
