@@ -9,6 +9,7 @@ import {
   Flame,
   Footprints,
   Loader2,
+  Sparkles,
   TriangleAlert,
   Wallet,
 } from "lucide-react";
