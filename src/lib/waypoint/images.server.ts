@@ -199,6 +199,7 @@ async function searchOpenverse(query: string): Promise<Candidate[]> {
       results?: {
         title?: string;
         url?: string;
+        thumbnail?: string;
         width?: number;
         height?: number;
         tags?: { name?: string }[];
@@ -208,11 +209,13 @@ async function searchOpenverse(query: string): Promise<Candidate[]> {
       .filter((r) => r.url)
       .map((r) => ({
         url: r.url!,
+        thumbnail: r.thumbnail,
         title: r.title ?? "",
         width: r.width,
         height: r.height,
         tags: (r.tags ?? []).map((t) => t.name ?? "").join(" "),
       }));
+
   } catch {
     return [];
   }
