@@ -102,17 +102,13 @@ export function TripGuide({
   const showAccessibility =
     input.accessibilityNeeds.length > 0 || Boolean(input.accessibilityNotes?.trim());
 
-  // Every stop needs a picture: activity query first, then a destination-wide fallback.
-  const fallbackQueries = [plan.destination, `${plan.destination} landmark`, `${plan.destination} skyline`];
+  // Each stop only ever shows a photo that actually matches the activity.
+  // No destination-wide filler: if nothing accurate is found, the card has no image.
   const imageQueries = useMemo(
     () =>
       Array.from(
-        new Set([
-          ...plan.days.flatMap((d) => d.items.map((i) => imageKeyFor(i, plan.destination))),
-          ...fallbackQueries,
-        ]),
+        new Set(plan.days.flatMap((d) => d.items.map((i) => imageKeyFor(i, plan.destination)))),
       ).slice(0, 45),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [plan],
   );
   const runFetchImages = useServerFn(fetchActivityImages);
@@ -123,7 +119,6 @@ export function TripGuide({
     retry: false,
     enabled: imageQueries.length > 0,
   });
-  const fallbackImage = fallbackQueries.map((q) => images?.[q]).find(Boolean);
 
   // One distinct photo per activity — a photo is never reused on the page.
   const assignedImages = useMemo(() => {
@@ -132,18 +127,15 @@ export function TripGuide({
     for (const day of plan.days) {
       for (const it of day.items) {
         const candidate = images?.[imageKeyFor(it, plan.destination)];
-        const pick = candidate && !used.has(candidate) ? candidate : undefined;
-        if (pick) {
-          used.add(pick);
-          byItem[itemKey(day.day, it)] = pick;
-        } else if (fallbackImage && !used.has(fallbackImage)) {
-          used.add(fallbackImage);
-          byItem[itemKey(day.day, it)] = fallbackImage;
+        if (candidate && !used.has(candidate)) {
+          used.add(candidate);
+          byItem[itemKey(day.day, it)] = candidate;
         }
       }
     }
     return byItem;
-  }, [plan, images, fallbackImage]);
+  }, [plan, images]);
+
 
 
   const budgetRows = [
