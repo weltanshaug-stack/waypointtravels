@@ -130,7 +130,9 @@ export async function runPlanner(args: {
     previousPlan
       ? `You are REVISING an existing plan. Preserve everything that already matched the traveller's priorities and change only what the directive requires.\nExisting plan:\n${JSON.stringify(previousPlan)}`
       : "",
-    revisionDirective ? `REVISION DIRECTIVE: ${revisionDirective}` : "",
+    revisionDirective
+      ? `REVISION DIRECTIVE: ${revisionDirective}\n\nCHANGE SUMMARY: fill changeSummary with 2-4 very short bullets naming what you actually changed and why, formatted exactly as "Old thing → New thing — reason" (e.g. "Ueno Park walk → Kyu Iwasaki-tei House tour — less walking"). Mention only real changes you made in this revision. Leave changeSummary empty ([]) when nothing changed.`
+      : `changeSummary must be an empty array ([]) — this is a first draft, not a revision.`,
     `Currency for all amounts: ${input.currency}.`,
   ]
     .filter(Boolean)
