@@ -26,10 +26,12 @@ import {
   TRANSPORT_OPTIONS,
   TRAVEL_STYLES,
   type TripInput,
+  recommendedBudget,
   tripDayCount,
   validateTripBudget,
   validateTripDates,
 } from "@/lib/waypoint/types";
+
 
 const STEPS = [
   "Destination",
