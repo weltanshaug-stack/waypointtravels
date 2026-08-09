@@ -34,9 +34,13 @@ const LEVEL_STYLE: Record<ActivityLevel, { className: string; icon: typeof Coffe
 };
 
 function imageKeyFor(item: ItineraryItem, destination: string): string {
-  const q = (item.imageQuery ?? "").trim();
-  return (q || `${item.title} ${destination}`).slice(0, 120);
+  const q = (item.imageQuery ?? "").trim() || item.title;
+  const city = destination.split(",")[0]?.trim() ?? "";
+  // Anchor the search to the city so lookups resolve to the right building.
+  const withCity = city && !q.toLowerCase().includes(city.toLowerCase()) ? `${q} ${city}` : q;
+  return withCity.slice(0, 120);
 }
+
 
 /**
  * Renders the agent's copy, turning **Place Name** into bold text so specific
