@@ -96,7 +96,7 @@ function relevance(query: string, title: string, url: string): number {
 
 type OpenverseResult = { title?: string; url?: string };
 
-async function openverse(query: string, minHits: number): Promise<string | null> {
+async function openverse(query: string, minHits: number): Promise<string[]> {
   const url = `${OPENVERSE}?${new URLSearchParams({
     q: query,
     page_size: "12",
@@ -108,22 +108,22 @@ async function openverse(query: string, minHits: number): Promise<string | null>
       headers: { "User-Agent": UA, Accept: "application/json" },
       signal: AbortSignal.timeout(7000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) return [];
     const json = (await res.json()) as { results?: OpenverseResult[] };
-    const scored = (json.results ?? [])
+    return (json.results ?? [])
       .filter((r) => r.url && looksLikePhoto(r.title ?? "", r.url))
       .map((r) => ({ url: r.url!, score: relevance(query, r.title ?? "", r.url!) }))
       .filter((r) => r.score >= minHits)
-      .sort((a, b) => b.score - a.score);
-    return scored[0]?.url ?? null;
+      .sort((a, b) => b.score - a.score)
+      .map((r) => r.url);
   } catch {
-    return null;
+    return [];
   }
 }
 
 type WikiPage = { title?: string; thumbnail?: { source?: string } };
 
-async function wikipedia(query: string, minHits: number): Promise<string | null> {
+async function wikipedia(query: string, minHits: number): Promise<string[]> {
   const url = `${WIKIPEDIA}?${new URLSearchParams({
     action: "query",
     generator: "search",
@@ -140,18 +140,18 @@ async function wikipedia(query: string, minHits: number): Promise<string | null>
       headers: { "User-Agent": UA },
       signal: AbortSignal.timeout(6000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) return [];
     const json = (await res.json()) as { query?: { pages?: Record<string, WikiPage> } };
-    const scored = Object.values(json.query?.pages ?? {})
+    return Object.values(json.query?.pages ?? {})
       .map((p) => ({ src: p.thumbnail?.source, title: p.title ?? "" }))
       .filter((p): p is { src: string; title: string } => Boolean(p.src))
       .filter((p) => looksLikePhoto(p.title, p.src))
       .map((p) => ({ src: p.src, score: relevance(query, p.title, p.src) }))
       .filter((p) => p.score >= minHits)
-      .sort((a, b) => b.score - a.score);
-    return scored[0]?.src ?? null;
+      .sort((a, b) => b.score - a.score)
+      .map((p) => p.src);
   } catch {
-    return null;
+    return [];
   }
 }
 
@@ -168,6 +168,7 @@ function variants(query: string): { q: string; minHits: number }[] {
     { q: query, minHits: 1 },
     { q: `${core} photograph`, minHits: 1 },
     { q: core, minHits: 1 },
+    { q: query, minHits: 0 },
   ];
   // Deduplicate identical phrase+threshold pairs.
   const seen = new Set<string>();
@@ -179,14 +180,23 @@ function variants(query: string): { q: string; minHits: number }[] {
   });
 }
 
-/** Resolves one search phrase to a photograph of the activity itself. */
-async function lookupOne(query: string): Promise<string | null> {
+/**
+ * Ranked photo candidates for one search phrase, strongest match first.
+ * Multiple candidates let the caller give every activity a distinct photo.
+ */
+async function lookupCandidates(query: string): Promise<string[]> {
+  const out: string[] = [];
+  const seen = new Set<string>();
   for (const { q, minHits } of variants(query)) {
-    const hit = (await openverse(q, minHits)) ?? (await wikipedia(q, minHits));
-    if (hit) return hit;
+    const found = [...(await openverse(q, minHits)), ...(await wikipedia(q, minHits))];
+    for (const url of found) {
+      if (seen.has(url)) continue;
+      seen.add(url);
+      out.push(url);
+    }
+    if (out.length >= 6) break;
   }
-  // Last resort: accept anything photographic for the original phrase.
-  return (await openverse(query, 0)) ?? (await wikipedia(query, 0));
+  return out;
 }
 
 export async function fetchImagesForQueries(
@@ -200,11 +210,18 @@ export async function fetchImagesForQueries(
     ),
   ).slice(0, 45);
 
-  const results = await Promise.all(unique.map((q) => lookupOne(q)));
+  const candidates = await Promise.all(unique.map((q) => lookupCandidates(q)));
+
+  // Greedy unique assignment: no two activities ever show the same photo.
   const map: Record<string, string> = {};
+  const used = new Set<string>();
   unique.forEach((q, i) => {
-    const url = results[i];
-    if (url) map[q] = url;
+    const pick = (candidates[i] ?? []).find((url) => !used.has(url));
+    if (pick) {
+      used.add(pick);
+      map[q] = pick;
+    }
   });
   return map;
 }
+

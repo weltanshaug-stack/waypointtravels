@@ -33,6 +33,9 @@ const LEVEL_STYLE: Record<ActivityLevel, { className: string; icon: typeof Coffe
   Active: { className: "border-warn/50 bg-warn/15 text-warn-foreground", icon: Flame },
 };
 
+const itemKey = (day: number, item: ItineraryItem) =>
+  `${day}|${item.timeOfDay}|${item.title}`;
+
 function imageKeyFor(item: ItineraryItem, destination: string): string {
   const q = (item.imageQuery ?? "").trim() || item.title;
   const city = destination.split(",")[0]?.trim() ?? "";
@@ -119,6 +122,27 @@ export function TripGuide({
     enabled: imageQueries.length > 0,
   });
   const fallbackImage = fallbackQueries.map((q) => images?.[q]).find(Boolean);
+
+  // One distinct photo per activity — a photo is never reused on the page.
+  const assignedImages = useMemo(() => {
+    const used = new Set<string>();
+    const byItem: Record<string, string> = {};
+    for (const day of plan.days) {
+      for (const it of day.items) {
+        const candidate = images?.[imageKeyFor(it, plan.destination)];
+        const pick = candidate && !used.has(candidate) ? candidate : undefined;
+        if (pick) {
+          used.add(pick);
+          byItem[itemKey(day.day, it)] = pick;
+        } else if (fallbackImage && !used.has(fallbackImage)) {
+          used.add(fallbackImage);
+          byItem[itemKey(day.day, it)] = fallbackImage;
+        }
+      }
+    }
+    return byItem;
+  }, [plan, images, fallbackImage]);
+
 
   const budgetRows = [
     { label: "Stay", value: plan.budget.accommodation },
@@ -223,7 +247,7 @@ export function TripGuide({
 
               <ol className="mt-5 flex flex-col gap-6">
                 {items.map((item, i) => {
-                  const image = images?.[imageKeyFor(item, plan.destination)] ?? fallbackImage;
+                  const image = assignedImages[itemKey(day.day, item)];
                   return (
                     <li key={i} className="surface-card flex flex-col overflow-hidden">
                       <div className="relative h-64 w-full shrink-0 bg-secondary sm:h-80">
