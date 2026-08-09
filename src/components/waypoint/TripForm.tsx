@@ -26,6 +26,7 @@ import {
   TRANSPORT_OPTIONS,
   TRAVEL_STYLES,
   type TripInput,
+  recommendedTripBudget,
   tripDayCount,
   validateTripBudget,
   validateTripDates,
@@ -153,10 +154,10 @@ export function TripForm({
 
   const dateError = validateTripDates(value);
   const budgetError = validateTripBudget(value);
+  const recommended = recommendedTripBudget(value);
 
   const canAdvance = () => {
     if (step === 0) return value.destinationFlexible ? true : value.destination.trim().length > 1;
-    if (step === 2) return value.budgetTotal > 0;
     return true;
   };
 
@@ -178,6 +179,13 @@ export function TripForm({
 
   const handleContinue = () => {
     if (step === 1 && blockedByDates()) return;
+    // An untouched budget field means "use the recommended total".
+    if (step === 2 && !value.budgetTotal) {
+      set("budgetTotal", recommended);
+      setShowBudgetError(false);
+      setStep((s) => s + 1);
+      return;
+    }
     if (step === 2 && blockedByBudget()) return;
     setShowDateError(false);
     setShowBudgetError(false);
@@ -322,7 +330,7 @@ export function TripForm({
                 <NumberField
                   min={0}
                   max={1_000_000}
-                  placeholder="2000"
+                  placeholder={`${recommended.toLocaleString()} (recommended for this trip)`}
                   value={value.budgetTotal}
                   onChange={(n) => {
                     setShowBudgetError(false);

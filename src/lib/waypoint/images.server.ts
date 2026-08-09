@@ -1,20 +1,22 @@
 /**
- * Strict itinerary image selection.
+ * Strict itinerary image selection pipeline.
  *
- * Every itinerary card must show a photo a traveller can recognise as the
- * actual experience. We never take the first search hit. Instead:
- *
- *   1. Candidates are gathered from Openverse (openly licensed photo search)
- *      with the Wikipedia article thumbnail as a secondary source.
- *   2. Every candidate is scored 0-100:
- *        event relevance 50 | location 20 | quality 15 | appeal 10 | clean 5
- *   3. Only candidates at or above the tier's threshold are displayed.
- *   4. Searching walks a tier ladder (exact event -> same attraction ->
- *      activity in destination -> activity anywhere -> destination) so we never
- *      jump straight from "exact" to "generic city photo".
- *
- * Selfies, portraits, influencer shots, maps, logos, screenshots, collages,
- * infographics, watermarked and low-resolution assets are rejected outright.
+ * For every itinerary event we:
+ *   1. Generate MULTIPLE queries (exact event + location, activity + location,
+ *      activity + destination, broader activity) instead of one search.
+ *   2. Retrieve many candidates per query from Openverse (openly licensed photo
+ *      search) with Wikipedia article thumbnails as a secondary source.
+ *   3. Hard-filter anything that isn't a usable photo of the experience
+ *      (selfies, posed portraits, maps, logos, screenshots, collages,
+ *      infographics, watermarks, low-resolution or broken assets).
+ *   4. Score every survivor 0-100:
+ *        event match 50 | location 20 | quality 15 | aesthetics 10 | clean 5
+ *   5. Only accept a candidate that clears the tier threshold (80 for the
+ *      event/attraction tiers), walking a fallback ladder before ever
+ *      considering a generic destination photo.
+ *   6. Deduplicate globally — an image (or a crop/resize of it) is never used
+ *      twice inside one itinerary. If nothing unique clears the bar, the event
+ *      gets NO image rather than a wrong one.
  */
 
 const OPENVERSE = "https://api.openverse.org/v1/images/";
@@ -62,7 +64,7 @@ const REJECT = [
   "side by side",
   "panel of",
   "watermark",
-  // selfies / portraits / influencer shots
+  // selfies / posed portraits / influencer shots
   "selfie",
   "self-portrait",
   "self portrait",
@@ -70,6 +72,7 @@ const REJECT = [
   "headshot",
   "posing",
   "poses",
+  "posed",
   "me at",
   "myself",
   "my trip",
@@ -123,6 +126,8 @@ type Candidate = {
   tags?: string | undefined;
 };
 
+type Scored = { url: string; score: number; threshold: number; identity: string };
+
 function tokens(text: string): string[] {
   return text
     .toLowerCase()
@@ -141,9 +146,29 @@ function haystackOf(c: Candidate): string {
   return `${c.title} ${c.tags ?? ""} ${decoded}`.toLowerCase();
 }
 
+/**
+ * Identity used for global de-duplication. Strips thumbnail size prefixes and
+ * extensions so crops/resizes of the same photo collapse to one key.
+ */
+function identityOf(url: string): string {
+  let decoded = url;
+  try {
+    decoded = decodeURIComponent(url);
+  } catch {
+    /* keep raw */
+  }
+  const file = decoded.split("?")[0]!.split("/").pop() ?? decoded;
+  return file
+    .toLowerCase()
+    .replace(/^\d+px-/, "")
+    .replace(/\.(jpe?g|png|webp|avif)$/, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
 /** Hard rejections that no score can rescue. */
 function isDisqualified(c: Candidate): boolean {
   const url = c.url.toLowerCase();
+  if (!/^https?:\/\//.test(url)) return true;
   if (/\.(svg|gif|tif|tiff)(\?|$)/.test(url)) return true;
   const hay = haystackOf(c);
   if (REJECT.some((bad) => hay.includes(bad))) return true;
@@ -155,13 +180,9 @@ function isDisqualified(c: Candidate): boolean {
 
 /**
  * Scores a candidate 0-100 against the event.
- *   event relevance 50 · location 20 · quality 15 · appeal 10 · clean 5
+ *   event match 50 · location 20 · quality 15 · aesthetics 10 · clean 5
  */
-function scoreCandidate(
-  c: Candidate,
-  activity: string[],
-  city: string[],
-): number {
+function scoreCandidate(c: Candidate, activity: string[], city: string[]): number {
   const hay = haystackOf(c);
 
   if (activity.length === 0) return 0;
@@ -179,7 +200,7 @@ function scoreCandidate(
   const w = c.width ?? 0;
   score += w >= 1600 ? 15 : w >= 1000 ? 11 : w >= 640 ? 6 : 8;
 
-  // Appeal: landscape framing reads best in a hero card.
+  // Aesthetics: landscape framing reads best in a hero card.
   const h = c.height ?? 0;
   if (w && h) score += w > h * 1.15 ? 10 : w >= h ? 7 : 3;
   else score += 6;
@@ -268,26 +289,26 @@ async function wikipediaCandidates(query: string): Promise<Candidate[]> {
   }
 }
 
-/** Best-scoring acceptable candidate for one search phrase. */
-async function bestFor(
+/** All acceptable candidates for one search phrase, scored. */
+async function candidatesFor(
   phrase: string,
   activity: string[],
   city: string[],
   threshold: number,
-): Promise<{ url: string; score: number } | null> {
-  const candidates = [
+): Promise<Scored[]> {
+  const raw = [
     ...(await openverseCandidates(phrase)),
     ...(await wikipediaCandidates(phrase)),
   ].filter((c) => !isDisqualified(c));
 
-  let best: { url: string; score: number } | null = null;
-  for (const c of candidates) {
-    const score = scoreCandidate(c, activity, city);
-    if (score >= threshold && (!best || score > best.score)) {
-      best = { url: c.url, score };
-    }
-  }
-  return best;
+  return raw
+    .map((c) => ({
+      url: c.url,
+      score: scoreCandidate(c, activity, city),
+      threshold,
+      identity: identityOf(c.url),
+    }))
+    .filter((s) => s.score >= s.threshold);
 }
 
 /**
@@ -307,35 +328,45 @@ function split(query: string): { activity: string[]; city: string[]; core: strin
 }
 
 /**
- * Tier ladder for one event. Relevance always beats aesthetics: we only fall
- * back to a destination photo when nothing activity-specific clears the bar.
+ * Builds the full, ordered candidate pool for one event across every fallback
+ * level. Nothing is chosen here — selection happens later so we can enforce
+ * global uniqueness across the whole itinerary.
  */
-async function lookupOne(query: string, destination: string): Promise<string | null> {
+async function poolFor(query: string, destination: string): Promise<Scored[]> {
   const { activity, city, core, cityText } = split(query);
   const destTokens = tokens(destination);
 
-  const tiers: { phrase: string; activity: string[]; city: string[]; threshold: number }[] = [
-    // Tier 1 — exact event in the exact location.
+  const levels: { phrase: string; activity: string[]; city: string[]; threshold: number }[] = [
+    // L1 — exact attraction + activity + location.
     { phrase: query, activity, city, threshold: 80 },
-    // Tier 2 — same attraction/activity, any angle.
     { phrase: `${core} ${cityText} photograph`.trim(), activity, city, threshold: 80 },
-    // Tier 3 — same activity somewhere in the destination.
-    { phrase: `${core} ${destination}`.trim(), activity, city: destTokens, threshold: 75 },
-    // Tier 4 — same activity elsewhere (still recognisably the activity).
+    // L2 — exact attraction + location.
+    { phrase: `${core} ${cityText}`.trim(), activity, city, threshold: 80 },
+    // L3 — activity + location.
+    { phrase: `${core} ${destination}`.trim(), activity, city: destTokens, threshold: 78 },
+    // L4 — activity + destination region, any angle.
+    { phrase: `${core} ${destination} photograph`.trim(), activity, city: destTokens, threshold: 74 },
+    // L5 — visually similar activity anywhere (still recognisably the activity).
     { phrase: core, activity, city: [], threshold: 68 },
   ];
 
-  const seen = new Set<string>();
-  for (const tier of tiers) {
-    if (!tier.phrase || seen.has(`${tier.phrase}|${tier.threshold}`)) continue;
-    seen.add(`${tier.phrase}|${tier.threshold}`);
-    const hit = await bestFor(tier.phrase, tier.activity, tier.city, tier.threshold);
-    if (hit) return hit.url;
+  const pool: Scored[] = [];
+  const seenPhrase = new Set<string>();
+  for (const level of levels) {
+    if (!level.phrase || seenPhrase.has(level.phrase)) continue;
+    seenPhrase.add(level.phrase);
+    const found = await candidatesFor(level.phrase, level.activity, level.city, level.threshold);
+    pool.push(...found);
+    // Stop early once we have a healthy set of strong, on-event candidates.
+    if (pool.filter((p) => p.score >= 80).length >= 5) break;
   }
 
-  // Tier 5 — destination image, absolute last resort.
-  const dest = await bestFor(`${destination} landscape`, destTokens, [], 55);
-  return dest?.url ?? null;
+  // Highest score first, de-duplicated by identity within this event.
+  const byIdentity = new Map<string, Scored>();
+  for (const s of pool.sort((a, b) => b.score - a.score)) {
+    if (!byIdentity.has(s.identity)) byIdentity.set(s.identity, s);
+  }
+  return Array.from(byIdentity.values());
 }
 
 export async function fetchImagesForQueries(
@@ -350,13 +381,23 @@ export async function fetchImagesForQueries(
     ),
   ).slice(0, 45);
 
-  const results = await Promise.all(
-    unique.map((q) => lookupOne(q, destination || q)),
-  );
+  // Network-heavy candidate gathering runs in parallel...
+  const pools = await Promise.all(unique.map((q) => poolFor(q, destination || q)));
+
+  // ...then selection is sequential so no photo is used twice in one plan.
+  const usedIdentities = new Set<string>();
+  const usedUrls = new Set<string>();
   const map: Record<string, string> = {};
+
   unique.forEach((q, i) => {
-    const url = results[i];
-    if (url) map[q] = url;
+    const pool = pools[i] ?? [];
+    const pick = pool.find((c) => !usedIdentities.has(c.identity) && !usedUrls.has(c.url));
+    // No unique candidate clears the bar → no image, rather than a wrong one.
+    if (!pick) return;
+    usedIdentities.add(pick.identity);
+    usedUrls.add(pick.url);
+    map[q] = pick.url;
   });
+
   return map;
 }
