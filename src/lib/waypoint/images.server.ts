@@ -411,5 +411,52 @@ export async function fetchImagesForQueries(
     map[q] = [primary.url, ...fallbacks];
   });
 
+  // ---- Guarantee: every query ends up with at least one usable photo. ----
+  const missing = unique.filter((q) => !(map[q]?.length));
+  if (missing.length) {
+    // Threshold-free rescue on the event phrase itself, then on the destination.
+    const rescues = await Promise.all(
+      missing.map(async (q) => {
+        const { core, cityText } = split(q);
+        const phrases = [
+          `${core} ${cityText}`.trim(),
+          core,
+          `${core} ${destination}`.trim(),
+        ].filter((p, idx, arr) => p.length > 2 && arr.indexOf(p) === idx);
+
+        const found: Candidate[] = [];
+        for (const phrase of phrases) {
+          const raw = [
+            ...(await openverseCandidates(phrase)),
+            ...(await wikipediaCandidates(phrase)),
+          ].filter((c) => !isDisqualified(c));
+          found.push(...raw);
+          if (found.length >= 5) break;
+        }
+        return { q, found };
+      }),
+    );
+
+    // Shared destination photos as the absolute last resort.
+    let destPool: Candidate[] = [];
+    if (rescues.some((r) => r.found.length === 0) && destination) {
+      destPool = [
+        ...(await wikipediaCandidates(`${destination} landmark`)),
+        ...(await openverseCandidates(`${destination} cityscape landmark`)),
+      ].filter((c) => !isDisqualified(c));
+    }
+
+    for (const { q, found } of rescues) {
+      const list = (found.length ? found : destPool).filter((c) => !usedUrls.has(c.url));
+      const chosen = (list.length ? list : found.length ? found : destPool).slice(0, 5);
+      if (!chosen.length) continue;
+      const first = chosen[0]!;
+      usedUrls.add(first.url);
+      usedIdentities.add(identityOf(first.url));
+      map[q] = chosen.map((c) => c.url);
+    }
+  }
+
   return map;
 }
+
