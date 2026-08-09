@@ -420,8 +420,19 @@ export function validateTripBudget(input: TripInput): string | null {
   return null;
 }
 
-export function formatMoney(amount: number, currency: string): string {
+/** Approximate value of 1 unit of the currency in USD. */
+const USD_PER_UNIT: Record<string, number> = {
+  USD: 1,
+  EUR: 1.08,
+  GBP: 1.27,
+  CAD: 0.73,
+  AUD: 0.66,
+  JPY: 0.0067,
+  INR: 0.012,
+};
 
+/** Plain formatted amount in its own currency, no conversion. */
+export function formatAmount(amount: number, currency: string): string {
   try {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -431,4 +442,16 @@ export function formatMoney(amount: number, currency: string): string {
   } catch {
     return `${Math.round(amount || 0)} ${currency}`;
   }
+}
+
+/**
+ * Money for display. Non-USD currencies always show the approximate US dollar
+ * equivalent in parentheses, e.g. "€1,200 (≈$1,296)".
+ */
+export function formatMoney(amount: number, currency: string): string {
+  const base = formatAmount(amount, currency);
+  const rate = USD_PER_UNIT[currency];
+  if (!currency || currency === "USD" || !rate) return base;
+  const usd = Math.round((amount || 0) * rate);
+  return `${base} (≈${formatAmount(usd, "USD")})`;
 }
