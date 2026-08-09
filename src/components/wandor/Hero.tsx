@@ -4,6 +4,7 @@ import { Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import heroFallback from "@/assets/hero.jpg";
+import logo from "@/assets/logo.png.asset.json";
 
 const VIDEO_SRC =
   "https://pollen-batch-41236914.figma.site/_components/v2/f0ee2dae7671c170c34f12e31c4cb41418976c98/769c564298c132f7919405cd9f17c1b1231f341d.769c5642.mp4";
@@ -56,14 +57,15 @@ export function Hero() {
       <div
         className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-[687px]"
         style={{
-          background: "linear-gradient(180deg, rgba(255,255,255,1) 0%, rgba(255,255,255,0) 100%)",
+          background: "linear-gradient(180deg, rgba(253,248,238,1) 0%, rgba(253,248,238,0) 100%)",
         }}
       />
 
       <div className="relative z-[2] mx-auto max-w-[1360px]">
         <nav className="flex items-center justify-between px-6 pt-5 pb-4 md:px-20 md:pt-6">
-          <Link to="/" className="font-logo text-[32px] leading-none md:text-[38px]">
-            wandor
+          <Link to="/" className="flex items-center gap-2.5">
+            <img src={logo.url} alt="WayPoint logo" className="h-9 w-9 object-contain md:h-11 md:w-11" />
+            <span className="font-logo text-[30px] leading-none md:text-[36px]">WayPoint</span>
           </Link>
 
           <div className="absolute left-1/2 flex -translate-x-1/2 gap-8 max-md:hidden">
@@ -82,7 +84,7 @@ export function Hero() {
             <button
               type="button"
               onClick={start}
-              className="cursor-pointer rounded-full border-none bg-wandor-dark px-5 py-3.5 font-sans text-[15px] font-medium tracking-[0.04em] text-[#fafafa] uppercase transition-all hover:bg-[#333] active:scale-95"
+              className="cursor-pointer rounded-full border-none bg-primary px-5 py-3.5 font-sans text-[15px] font-medium tracking-[0.04em] text-primary-foreground uppercase transition-all hover:opacity-90 active:scale-95"
             >
               Plan My Trip
             </button>
@@ -128,7 +130,7 @@ export function Hero() {
             <button
               type="button"
               onClick={start}
-              className="absolute right-[21px] bottom-[21px] flex h-14 w-[156px] cursor-pointer items-center justify-center rounded-[44px] border-none bg-black font-sans text-base font-medium tracking-[0.02em] text-[#fafafa] uppercase shadow-[0_0_2px_0_rgba(0,0,0,0.05)] transition-all hover:bg-[#333] active:scale-95"
+              className="absolute right-[21px] bottom-[21px] flex h-14 w-[156px] cursor-pointer items-center justify-center rounded-[44px] border-none bg-black font-sans text-base font-medium tracking-[0.02em] text-primary-foreground uppercase shadow-[0_0_2px_0_rgba(0,0,0,0.05)] transition-all hover:opacity-90 active:scale-95"
             >
               Plan My Trip
             </button>

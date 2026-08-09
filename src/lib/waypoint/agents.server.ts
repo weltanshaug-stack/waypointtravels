@@ -98,8 +98,10 @@ const PLANNER_SYSTEM = `You are the Planner Orchestration agent inside WayPoint.
 3. ACCESSIBILITY AGENT — apply every accessibility constraint as a hard logistical filter (walking distance, stairs, seating, sensory load, dietary needs, medication storage). Add an accessibilityNote to any item where it is relevant, always phrased as reported/estimated.
 4. SCHEDULE OPTIMIZER — respect pace: Relaxed = max 2 activities/day, Balanced = 2-3, Packed = 3-4. Cluster geographically to minimise travel. Give realistic travelTimeMinutes between consecutive activities. Include arrival/departure realities on the first and last day, and explicit rest periods.
 
+Within each day, list items in chronological order: all morning items first, then afternoon, then evening.
+Write each item description as one short, warm, appealing sentence (max 18 words) — no filler, no repeated context.
 Every item needs a specific whyItFits sentence that references the traveller's own stated preferences.
-Every item also needs an imageQuery: a short real-world search phrase (2-6 words) naming the actual place or landmark, e.g. "Senso-ji Temple Tokyo" or "Tsukiji Outer Market". Never a generic phrase like "local food".
+Every item MUST have a non-empty imageQuery: a short real-world search phrase (2-6 words) naming the actual place or landmark that a photo exists of. If the stop is generic (a meal, a rest, a transfer), use the closest real, photographable place or neighbourhood nearby, e.g. "Senso-ji Temple Tokyo" or "Tsukiji Outer Market". Never a generic phrase like "local food".
 Every day needs estimatedDayCost (sum of that day's item costs plus that day's share of food/local transport) and activityLevel: "Relaxed" (mostly sitting, little walking), "Moderate" (normal sightseeing) or "Active" (long walking, hiking or physically demanding). Match activityLevel to the traveller's pace and accessibility constraints, and alternate Active days with Relaxed ones.
 
 ${SAFETY_RULES}
@@ -158,7 +160,7 @@ export async function runBriefAndPlan(input: TripInput): Promise<{
 Before planning you also act as the PREFERENCE ANALYZER: convert the raw traveller input into an explicit constraint brief (4-6 weighted priorities, testable constraints, budget strategy, accessibility constraints, pace guidance, risks), then plan against that brief.
 Output BOTH results in a single JSON object shaped exactly as:
 {"brief":${BRIEF_SHAPE},"plan":${PLAN_SHAPE}}
-Keep every description to at most 2 short sentences and whyItFits to one sentence. Be concise: no filler prose.`;
+Keep every description to ONE short sentence (max 18 words) and whyItFits to one short clause. Keep notes and highlights to at most one entry each. Be concise: no filler prose.`;
 
   const prompt = [
     `Traveller input:\n${travellerSummary(input)}`,

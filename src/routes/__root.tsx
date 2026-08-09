@@ -79,17 +79,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Wandor — Where will you go next?" },
+      { title: "WayPoint — Where will you go next?" },
       {
         name: "description",
         content:
-          "Wandor builds personalized, day-by-day travel itineraries around your budget, interests, pace and accessibility needs.",
+          "WayPoint builds personalized, day-by-day travel itineraries around your budget, interests, pace and accessibility needs.",
       },
-      { name: "author", content: "Wandor" },
-      { property: "og:title", content: "Wandor — Where will you go next?" },
+      { name: "author", content: "WayPoint" },
+      { property: "og:title", content: "WayPoint — Where will you go next?" },
       {
         property: "og:description",
-        content: "Tell Wandor where you are going and what you love. Get a personalized itinerary.",
+        content: "Tell WayPoint where you are going and what you love. Get a personalized itinerary.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -100,7 +100,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Special+Elite&family=Geist:wght@400;500;600;700&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Nunito:wght@400;500;600;700&display=swap",
       },
       { rel: "icon", type: "image/png", href: "/favicon.png" },
     ],

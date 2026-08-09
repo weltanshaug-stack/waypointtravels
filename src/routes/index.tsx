@@ -5,16 +5,16 @@ import { Hero } from "@/components/wandor/Hero";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Wandor — Where will you go next?" },
+      { title: "WayPoint — Where will you go next?" },
       {
         name: "description",
         content:
-          "Wandor turns what you love into a personalized day-by-day travel itinerary with costs, pace and accessibility built in.",
+          "WayPoint turns what you love into a personalized day-by-day travel itinerary with costs, pace and accessibility built in.",
       },
-      { property: "og:title", content: "Wandor — Where will you go next?" },
+      { property: "og:title", content: "WayPoint — Where will you go next?" },
       {
         property: "og:description",
-        content: "Tell Wandor about your trip and get a clear, personalized itinerary in minutes.",
+        content: "Tell WayPoint about your trip and get a clear, personalized itinerary in minutes.",
       },
     ],
   }),
@@ -65,7 +65,7 @@ function Landing() {
           <div className="mt-14 flex flex-wrap items-center gap-4">
             <Link
               to="/plan"
-              className="rounded-full bg-wandor-dark px-6 py-3.5 font-sans text-[15px] font-medium tracking-[0.04em] text-[#fafafa] uppercase transition-all hover:bg-[#333] active:scale-95"
+              className="rounded-full bg-primary px-6 py-3.5 font-sans text-[15px] font-medium tracking-[0.04em] text-primary-foreground uppercase transition-all hover:opacity-90 active:scale-95"
             >
               Plan My Trip
             </Link>
@@ -86,7 +86,7 @@ function Landing() {
       </main>
 
       <footer className="border-t border-border py-8 text-center text-sm text-muted-foreground">
-        <span className="font-logo text-base">wandor</span> — personalized travel planning.
+        <span className="font-logo text-base">WayPoint</span> — personalized travel planning.
       </footer>
     </div>
   );
