@@ -158,7 +158,13 @@ export function TripForm({
 
   const canAdvance = () => {
     if (step === 0) return value.destinationFlexible ? true : value.destination.trim().length > 1;
-    if (step === 2) return value.budgetTotal > 0;
+    return true;
+  };
+
+  /** An untouched budget field means "use the recommendation we showed you". */
+  const applyRecommendedBudget = () => {
+    if (value.budgetTotal > 0) return false;
+    set("budgetTotal", recommendedBudget(value));
     return true;
   };
 
@@ -171,6 +177,7 @@ export function TripForm({
   };
 
   const blockedByBudget = () => {
+    if (applyRecommendedBudget()) return false;
     if (!budgetError) return false;
     setShowBudgetError(true);
     setStep(2);
