@@ -274,6 +274,28 @@ export function TripGuide({
         })}
       </section>
 
+      {/* ---------- What changed (only on revised plans) ---------- */}
+      {(plan.changeSummary?.length ?? 0) > 0 && (
+        <section className="surface-card border-primary/30 bg-accent/40 p-6">
+          <h2 className="text-display flex items-center gap-2 text-lg font-semibold">
+            <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" /> What changed
+          </h2>
+          <ul className="mt-4 space-y-2.5">
+            {plan.changeSummary!.map((c, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm sm:text-base">
+                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+                <span>
+                  <RichText text={c.change} />
+                  {c.why && (
+                    <span className="text-muted-foreground"> → {c.why}</span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {/* ---------- Budget ---------- */}
       <section className="surface-card p-6">
         <div className="flex items-center justify-between gap-3">
