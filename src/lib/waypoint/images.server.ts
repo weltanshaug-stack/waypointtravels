@@ -369,10 +369,14 @@ async function poolFor(query: string, destination: string): Promise<Scored[]> {
   return Array.from(byIdentity.values());
 }
 
+/**
+ * Returns an ORDERED list of candidate URLs per query (best first) so the client
+ * can fall through to the next-best image whenever one fails to load.
+ */
 export async function fetchImagesForQueries(
   queries: string[],
   destination = "",
-): Promise<Record<string, string>> {
+): Promise<Record<string, string[]>> {
   const unique = Array.from(
     new Set(
       queries
@@ -384,19 +388,27 @@ export async function fetchImagesForQueries(
   // Network-heavy candidate gathering runs in parallel...
   const pools = await Promise.all(unique.map((q) => poolFor(q, destination || q)));
 
-  // ...then selection is sequential so no photo is used twice in one plan.
+  // ...then selection is sequential so the primary photo is never used twice.
   const usedIdentities = new Set<string>();
   const usedUrls = new Set<string>();
-  const map: Record<string, string> = {};
+  const map: Record<string, string[]> = {};
 
   unique.forEach((q, i) => {
     const pool = pools[i] ?? [];
-    const pick = pool.find((c) => !usedIdentities.has(c.identity) && !usedUrls.has(c.url));
-    // No unique candidate clears the bar → no image, rather than a wrong one.
-    if (!pick) return;
-    usedIdentities.add(pick.identity);
-    usedUrls.add(pick.url);
-    map[q] = pick.url;
+    const primary = pool.find((c) => !usedIdentities.has(c.identity) && !usedUrls.has(c.url));
+    if (!primary) {
+      // No unique first choice — still hand over backups so the card isn't blank.
+      const backups = pool.slice(0, 4).map((c) => c.url);
+      if (backups.length) map[q] = backups;
+      return;
+    }
+    usedIdentities.add(primary.identity);
+    usedUrls.add(primary.url);
+    const fallbacks = pool
+      .filter((c) => c.url !== primary.url && c.identity !== primary.identity)
+      .slice(0, 4)
+      .map((c) => c.url);
+    map[q] = [primary.url, ...fallbacks];
   });
 
   return map;
