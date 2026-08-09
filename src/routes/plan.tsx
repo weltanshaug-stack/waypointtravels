@@ -19,6 +19,8 @@ import {
 } from "@/lib/waypoint/types";
 
 const DRAFT_KEY = "waypoint:draft";
+/** Accessibility needs are the only answers we remember between trips. */
+const ACCESS_KEY = "waypoint:accessibility";
 const RESULT_KEY = "waypoint:result";
 
 export const Route = createFileRoute("/plan")({
@@ -44,6 +46,34 @@ export const Route = createFileRoute("/plan")({
 });
 
 type Phase = "form" | "planning" | "result";
+
+/** Style/preference answers are per-trip and never carried into a new trip. */
+function withoutPreferences(base: TripInput): TripInput {
+  return {
+    ...base,
+    travelStyles: [],
+    freeText: "",
+    pace: emptyTripInput.pace,
+    budgetCategory: emptyTripInput.budgetCategory,
+    budgetFlexibility: emptyTripInput.budgetFlexibility,
+    accommodation: [...emptyTripInput.accommodation],
+    transportation: [...emptyTripInput.transportation],
+  };
+}
+
+function readSavedAccessibility(): Pick<TripInput, "accessibilityNeeds" | "accessibilityNotes"> | null {
+  try {
+    const raw = localStorage.getItem(ACCESS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<TripInput>;
+    return {
+      accessibilityNeeds: Array.isArray(parsed.accessibilityNeeds) ? parsed.accessibilityNeeds : [],
+      accessibilityNotes: typeof parsed.accessibilityNotes === "string" ? parsed.accessibilityNotes : "",
+    };
+  } catch {
+    return null;
+  }
+}
 
 function PlanPage() {
   const { demo } = Route.useSearch();
@@ -76,7 +106,9 @@ function PlanPage() {
       }
       const draft = sessionStorage.getItem(DRAFT_KEY);
       const base = draft && !demo ? (JSON.parse(draft) as TripInput) : null;
-      if (base) setInput(base);
+      const access = readSavedAccessibility();
+      if (base) setInput({ ...base, ...(access ?? {}) });
+      else if (access && !demo) setInput((prev) => ({ ...prev, ...access }));
     } catch {
       /* ignore corrupt storage */
     }
@@ -86,6 +118,14 @@ function PlanPage() {
     setInput(next);
     try {
       sessionStorage.setItem(DRAFT_KEY, JSON.stringify(next));
+      // Only accessibility needs persist beyond this trip.
+      localStorage.setItem(
+        ACCESS_KEY,
+        JSON.stringify({
+          accessibilityNeeds: next.accessibilityNeeds,
+          accessibilityNotes: next.accessibilityNotes,
+        }),
+      );
     } catch {
       /* ignore */
     }
@@ -237,6 +277,14 @@ function PlanPage() {
                     variant="outline"
                     onClick={() => {
                       persistResult(null);
+                      // Fresh trip: keep accessibility needs, drop style/preferences.
+                      persistDraft(
+                        withoutPreferences({
+                          ...emptyTripInput,
+                          accessibilityNeeds: input.accessibilityNeeds,
+                          accessibilityNotes: input.accessibilityNotes,
+                        }),
+                      );
                       setPhase("form");
                     }}
                   >

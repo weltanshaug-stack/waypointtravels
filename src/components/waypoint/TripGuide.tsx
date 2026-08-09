@@ -98,15 +98,11 @@ export function TripGuide({
   const showAccessibility =
     input.accessibilityNeeds.length > 0 || Boolean(input.accessibilityNotes?.trim());
 
-  // Every stop needs a picture: activity query first, then a destination-wide fallback.
-  const fallbackQueries = [plan.destination, `${plan.destination} landmark`, `${plan.destination} skyline`];
+  // Each stop gets its own uniquely-selected photo (no shared fallback image).
   const imageQueries = useMemo(
     () =>
       Array.from(
-        new Set([
-          ...plan.days.flatMap((d) => d.items.map((i) => imageKeyFor(i, plan.destination))),
-          ...fallbackQueries,
-        ]),
+        new Set(plan.days.flatMap((d) => d.items.map((i) => imageKeyFor(i, plan.destination)))),
       ).slice(0, 45),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [plan],
@@ -120,7 +116,6 @@ export function TripGuide({
     retry: false,
     enabled: imageQueries.length > 0,
   });
-  const fallbackImage = fallbackQueries.map((q) => images?.[q]).find(Boolean);
 
   const budgetRows = [
     { label: "Stay", value: plan.budget.accommodation },
@@ -225,7 +220,7 @@ export function TripGuide({
 
               <ol className="mt-5 flex flex-col gap-6">
                 {items.map((item, i) => {
-                  const image = images?.[imageKeyFor(item, plan.destination)] ?? fallbackImage;
+                  const image = images?.[imageKeyFor(item, plan.destination)];
                   return (
                     <li key={i} className="surface-card flex flex-col overflow-hidden">
                       <div className="relative h-64 w-full shrink-0 bg-secondary sm:h-80">
@@ -338,7 +333,14 @@ export function TripGuide({
                 disabled={!!adapting}
                 onClick={() => onAdapt(a.id)}
               >
-                {adapting === a.id ? "Revising…" : a.label}
+                {adapting === a.id ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden="true" />
+                    Revising…
+                  </>
+                ) : (
+                  a.label
+                )}
               </Button>
             ))}
             {onChangeDestination && (
