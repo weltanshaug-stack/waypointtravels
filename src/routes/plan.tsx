@@ -57,14 +57,19 @@ function PlanPage() {
 
 
   const [error, setError] = useState<string | null>(null);
+  const [errorRetryable, setErrorRetryable] = useState(true);
   const [adapting, setAdapting] = useState<AdaptationId | null>(null);
   const [saving, setSaving] = useState(false);
   const [checking, setChecking] = useState(false);
+
+  // Guards against duplicate AI runs (double clicks, re-fired effects).
+  const inFlight = useRef(false);
 
   const runPlan = useServerFn(planTrip);
   const runAdapt = useServerFn(adaptTrip);
   const runSave = useServerFn(saveTrip);
   const runCheck = useServerFn(checkTrip);
+
 
   // Restore only the current in-progress session. Nothing carries between trips.
   useEffect(() => {
