@@ -6,12 +6,17 @@ export const WAYPOINT_MODEL = "openai/gpt-5.6-sol";
 
 export class AiUnavailableError extends Error {
   status: number;
+  /** Present so the app's error middleware forwards this instead of
+   *  replacing it with a generic 500 HTML page (which blanks the screen). */
+  statusCode: number;
   constructor(message: string, status = 500) {
     super(message);
     this.name = "AiUnavailableError";
     this.status = status;
+    this.statusCode = status;
   }
 }
+
 
 /** Captures the true gateway failure so stream errors don't hide it. */
 type GatewayFailure = { status: number; body: string } | null;
