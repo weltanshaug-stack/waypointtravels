@@ -144,7 +144,17 @@ function PlanPage() {
     }
   }
 
+  /** Quota/credit failures should not offer an instant retry that will fail again. */
+  function noteFailure(e: unknown, fallback: string) {
+    const message = e instanceof Error ? e.message : fallback;
+    setError(message);
+    setErrorRetryable(!/credit|rate limited/i.test(message));
+    return message;
+  }
+
   async function generate(override?: TripInput) {
+    if (inFlight.current) return;
+    inFlight.current = true;
     const target = override ?? input;
     setError(null);
     setPhase("planning");
@@ -154,13 +164,16 @@ function PlanPage() {
       setPhase("result");
       void audit(next);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "The AI agents could not finish your plan.");
+      noteFailure(e, "The AI agents could not finish your plan.");
       setPhase("form");
+    } finally {
+      inFlight.current = false;
     }
   }
 
   /** Demo: a fresh 2-4 day trip in a random city with randomized preferences. */
   function runDemoTrip() {
+    if (inFlight.current) return;
     const demoInput = randomDemoTripInput();
     setInput(demoInput);
     toast.success(`Demo trip: ${demoInput.daysCount} days in ${demoInput.destination}.`);
@@ -170,26 +183,27 @@ function PlanPage() {
 
 
   async function adapt(id: AdaptationId) {
-    if (!result) return;
+    if (!result || inFlight.current) return;
+    inFlight.current = true;
     setAdapting(id);
     setError(null);
     try {
       const next = await runAdapt({
         data: { input: result.input, brief: result.brief, plan: result.plan, adaptation: id },
       });
-      persistResult(next);
+      // Keep the existing review rather than paying for a second audit pass.
+      persistResult(result.check ? { ...next, check: result.check } : next);
       toast.success("Itinerary updated.");
       // Bring the traveller back to the top so they see the revised plan from day 1.
       window.scrollTo({ top: 0, behavior: "smooth" });
-      void audit(next);
     } catch (e) {
-      const message = e instanceof Error ? e.message : "The revision could not be completed.";
-      setError(message);
-      toast.error(message);
+      toast.error(noteFailure(e, "The revision could not be completed."));
     } finally {
       setAdapting(null);
+      inFlight.current = false;
     }
   }
+
 
   async function save() {
     if (!result) return;
