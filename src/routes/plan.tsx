@@ -235,9 +235,12 @@ function PlanPage() {
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
               {error} Your answers are still here.
             </p>
-            <Button size="sm" variant="outline" onClick={() => (result ? adapt("regenerate") : generate())}>
-              <RotateCcw className="mr-1 h-3.5 w-3.5" /> Retry
-            </Button>
+            {errorRetryable && (
+              <Button size="sm" variant="outline" onClick={() => (result ? adapt("regenerate") : generate())}>
+                <RotateCcw className="mr-1 h-3.5 w-3.5" /> Retry
+              </Button>
+            )}
+
           </div>
         )}
 
